@@ -1,0 +1,10 @@
+{
+  "name": "local-life-agent-demo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Static Web demo for a local life planning and execution agent with mock tools.",
+  "scripts": {
+    "test": "node tests.js",
+    "dev:api": "python -m uvicorn server:app --reload --host 127.0.0.1 --port 8000"
+  }
+}
