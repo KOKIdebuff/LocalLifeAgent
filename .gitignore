@@ -1,6 +1,7 @@
 __pycache__/
 .pytest_cache/
 .env
+DEMO_SCRIPT.md
 memory/*.sqlite
 memory/*.sqlite-*
 memory/*.jsonl
