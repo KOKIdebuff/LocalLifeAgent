@@ -44,6 +44,8 @@
 
 下一阶段目标不是引入重型多 Agent 框架，也不是依赖任何非官方泄露源码，而是在现有基础上把可选后端能力继续收敛成更稳定的轻量 Agent Runtime。
 
+后续会引入 LangGraph，但只将其作为 V4 alpha 后端轻量编排层，用于组织意图、校验、反馈复盘和候选记忆流程；核心业务逻辑仍由项目自研实现。LangGraph trace 只保留在后端日志或审计记录中，不映射到前端 `agentLoopTrace`。当前仓库尚未安装或启用 LangGraph，接入边界见 `LANGGRAPH_INTEGRATION.md`。
+
 已经落地：
 
 - 可选后端增强。
@@ -143,6 +145,7 @@ python -m py_compile .\server.py .\backend_core.py .\test_backend_core.py
 - `tests.js`：无依赖前端核心回归测试。
 - `test_backend_core.py`：后端逻辑单测，采用 `pytest` 风格。
 - `DESIGN.md`：规划策略、工具调用和 V4 alpha 结构设计说明。
+- `LANGGRAPH_INTEGRATION.md`：LangGraph 作为后端轻量编排层的后续接入边界说明。
 - `DEMO_SCRIPT.md`：3 分钟比赛讲解稿。
 - `progress.md`：当前阶段进度与验证状态。
 - `lessons.md`：关键设计复盘与经验沉淀。
