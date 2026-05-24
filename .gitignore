@@ -1,5 +1,8 @@
 __pycache__/
 .pytest_cache/
+.venv/
+.agents/
+.specify/
 .env
 DEMO_SCRIPT.md
 memory/*.sqlite

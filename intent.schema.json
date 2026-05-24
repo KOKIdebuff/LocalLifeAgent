@@ -1,0 +1,235 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "intent.schema.json",
+  "title": "POST /api/intent response contract",
+  "description": "Minimal contract for the optional backend intent endpoint. Successful LangGraph and direct LLM paths both return source=llm and the same intent shape; runtimePath identifies the backend path when applicable.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/IntentSuccessResponse"
+    },
+    {
+      "$ref": "#/$defs/IntentErrorResponse"
+    }
+  ],
+  "$defs": {
+    "IntentRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "input"
+      ],
+      "properties": {
+        "input": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "overrides": {
+          "type": "object",
+          "default": {}
+        }
+      }
+    },
+    "IntentSuccessResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ok",
+        "source",
+        "runtimePath",
+        "intent",
+        "lessonsUsed"
+      ],
+      "properties": {
+        "ok": {
+          "const": true
+        },
+        "source": {
+          "const": "llm"
+        },
+        "runtimePath": {
+          "enum": [
+            "langgraph",
+            "direct_llm"
+          ]
+        },
+        "intent": {
+          "$ref": "#/$defs/Intent"
+        },
+        "lessonsUsed": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Lesson"
+          }
+        }
+      }
+    },
+    "IntentErrorResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ok",
+        "source",
+        "runtimePath",
+        "intent",
+        "error",
+        "lessonsUsed"
+      ],
+      "properties": {
+        "ok": {
+          "const": false
+        },
+        "source": {
+          "enum": [
+            "missing_api_key",
+            "langgraph_llm_error",
+            "llm_error"
+          ]
+        },
+        "runtimePath": {
+          "enum": [
+            "langgraph",
+            "direct_llm",
+            null
+          ]
+        },
+        "intent": {
+          "type": "null"
+        },
+        "error": {
+          "type": "string"
+        },
+        "lessonsUsed": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Lesson"
+          }
+        }
+      }
+    },
+    "Intent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "groupType",
+        "timePreset",
+        "partySize",
+        "preferences",
+        "budgetPerPerson",
+        "childAge",
+        "missingFields",
+        "confidence",
+        "reasoningSummary"
+      ],
+      "properties": {
+        "groupType": {
+          "enum": [
+            "familyKids",
+            "familyElders",
+            "couple",
+            "friends",
+            "coworkers",
+            "solo",
+            "unknown"
+          ]
+        },
+        "timePreset": {
+          "enum": [
+            "今天下午",
+            "今天晚上",
+            "周末下午",
+            "unknown"
+          ]
+        },
+        "partySize": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "maximum": 12
+        },
+        "preferences": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "near",
+              "relaxed",
+              "healthy",
+              "noQueue",
+              "photo",
+              "indoor",
+              "outdoor",
+              "meal",
+              "budget"
+            ]
+          }
+        },
+        "budgetPerPerson": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 20,
+          "maximum": 1000
+        },
+        "childAge": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 16
+        },
+        "missingFields": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "groupType",
+              "timePreset"
+            ]
+          }
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "reasoningSummary": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 180
+        }
+      }
+    },
+    "Lesson": {
+      "type": "object",
+      "required": [
+        "id",
+        "lesson"
+      ],
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "lesson": {
+          "type": "string"
+        },
+        "avoidance": {
+          "type": "string"
+        },
+        "confidence": {
+          "type": "number"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

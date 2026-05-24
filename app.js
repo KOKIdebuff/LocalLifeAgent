@@ -20,14 +20,14 @@
   };
 
   const stageDefs = [
-    { id: "understand", label: "Understand" },
-    { id: "planner", label: "Ask/Plan" },
-    { id: "researchers", label: "Research" },
-    { id: "merger", label: "Merger" },
-    { id: "verifier", label: "Verifier" },
-    { id: "revise", label: "Revise" },
-    { id: "reflect", label: "Reflect" },
-    { id: "confirm_execute", label: "Confirm/Execute" },
+    { id: "understand", label: "理解需求" },
+    { id: "planner", label: "确认信息" },
+    { id: "researchers", label: "整理选择" },
+    { id: "merger", label: "生成方案" },
+    { id: "verifier", label: "检查方案" },
+    { id: "revise", label: "调整兜底" },
+    { id: "reflect", label: "复盘沉淀" },
+    { id: "confirm_execute", label: "确认执行" },
   ];
 
   const state = {
@@ -49,8 +49,6 @@
     clarification: document.getElementById("clarification-panel"),
     understanding: document.getElementById("understanding"),
     parseStatus: document.getElementById("parse-status"),
-    toolCalls: document.getElementById("tool-calls"),
-    toolCount: document.getElementById("tool-count"),
     plans: document.getElementById("plans"),
     planCount: document.getElementById("plan-count"),
     queue: document.getElementById("execution-queue"),
@@ -294,9 +292,6 @@
     els.understanding.className = "kv-list empty-state";
     els.understanding.textContent = "输入需求后会展示识别出的时间、同行人、人数和偏好。";
     els.parseStatus.textContent = "等待输入";
-    els.toolCalls.className = "tool-list empty-state";
-    els.toolCalls.textContent = "生成方案后会显示 Agent Loop Trace 和原始 Mock Tool 调用。";
-    els.toolCount.textContent = "0 次";
     renderStages();
     els.replanEvents.className = "replan-list empty-state";
     els.replanEvents.textContent = "生成方案后可模拟下雨、满座、孩子累了或预算太高。";
@@ -317,7 +312,6 @@
     renderStages();
     renderClarification();
     renderUnderstanding();
-    renderTools();
     renderPlans();
     renderServicePackage();
     renderReplanEvents();
@@ -523,204 +517,6 @@
 
     row.append(keyEl, valueEl);
     return row;
-  }
-
-  function renderTools() {
-    const calls = state.result ? state.result.toolCalls : [];
-    els.toolCount.textContent = calls.length + " 次";
-    if (!state.result) {
-      els.toolCalls.className = "tool-list empty-state";
-      els.toolCalls.textContent = "生成方案后会显示 Agent Loop Trace 和原始 Mock Tool 调用。";
-      return;
-    }
-
-    els.toolCalls.className = "tool-list";
-    els.toolCalls.innerHTML = "";
-    if (state.result.agentLoopTrace) {
-      els.toolCalls.appendChild(createLoopTrace(state.result.agentLoopTrace));
-    }
-
-    const label = document.createElement("div");
-    label.className = "tool-section-label";
-    label.textContent = calls.length
-      ? "原始 Mock Tool 调用"
-      : "补充关键信息后才会调用 Mock Tools；当前没有进入 researchers。";
-    els.toolCalls.appendChild(label);
-
-    if (!calls.length) return;
-
-    calls.forEach(function (call) {
-      const item = document.createElement("details");
-      item.className = "tool-item";
-      const summary = document.createElement("summary");
-      summary.className = "tool-summary";
-      const name = document.createElement("span");
-      name.className = "tool-name";
-      name.textContent = formatToolTitle(call);
-      const status = document.createElement("span");
-      status.className = "tag green";
-      status.textContent = formatToolStatus(call);
-      summary.append(name, status);
-
-      const readable = document.createElement("p");
-      readable.className = "tool-readable";
-      readable.textContent = formatToolReadable(call);
-
-      const body = document.createElement("pre");
-      body.className = "tool-body";
-      body.textContent = JSON.stringify({ input: call.input, output: call.output }, null, 2);
-      item.append(summary, readable, body);
-      els.toolCalls.appendChild(item);
-    });
-  }
-
-  function createLoopTrace(trace) {
-    const wrap = document.createElement("div");
-    wrap.className = "loop-trace";
-
-    const head = document.createElement("div");
-    head.className = "loop-trace-head";
-    const title = document.createElement("div");
-    title.className = "loop-trace-title";
-    const eyebrow = document.createElement("span");
-    eyebrow.textContent = "single orchestrator";
-    const h = document.createElement("strong");
-    h.textContent = "Agent Loop Trace";
-    title.append(eyebrow, h);
-    const mode = document.createElement("code");
-    mode.textContent = trace.mode;
-    head.append(title, mode);
-
-    const desc = document.createElement("p");
-    desc.className = "loop-trace-desc";
-    desc.textContent = trace.description;
-
-    const stages = document.createElement("div");
-    stages.className = "loop-stage-list";
-    trace.stages.forEach(function (stage) {
-      stages.appendChild(createLoopStage(stage));
-    });
-
-    wrap.append(head, desc, stages);
-    return wrap;
-  }
-
-  function createLoopStage(stage) {
-    const card = document.createElement("article");
-    card.className = "loop-stage " + stage.status;
-
-    const head = document.createElement("div");
-    head.className = "loop-stage-head";
-    const title = document.createElement("strong");
-    title.textContent = stage.label;
-    const status = document.createElement("span");
-    status.className = "loop-stage-status " + getLoopTone(stage.status);
-    status.textContent = formatLoopStatus(stage.status);
-    head.append(title, status);
-
-    const summary = document.createElement("p");
-    summary.textContent = stage.summary;
-
-    const findings = document.createElement("div");
-    findings.className = "loop-findings";
-    (stage.findings || []).slice(0, 5).forEach(function (finding) {
-      const item = document.createElement("div");
-      item.className = "loop-finding " + getLoopTone(finding.status);
-      const label = document.createElement("span");
-      label.textContent = finding.label;
-      const text = document.createElement("p");
-      text.textContent = finding.summary;
-      item.append(label, text);
-      findings.appendChild(item);
-    });
-
-    card.append(head, summary);
-    if (stage.lanes && stage.lanes.length) card.appendChild(createResearchLanes(stage.lanes));
-    if (stage.findings && stage.findings.length) card.appendChild(findings);
-    return card;
-  }
-
-  function createResearchLanes(lanes) {
-    const wrap = document.createElement("div");
-    wrap.className = "research-lanes";
-    lanes.forEach(function (lane) {
-      const item = document.createElement("div");
-      item.className = "research-lane " + getLoopTone(lane.status) + (lane.fallbackUsed ? " fallback" : "");
-      const head = document.createElement("div");
-      const label = document.createElement("strong");
-      label.textContent = lane.label;
-      const latency = document.createElement("code");
-      latency.textContent = lane.mockLatencyMs + "ms";
-      head.append(label, latency);
-      const summary = document.createElement("p");
-      summary.textContent = lane.resultSummary;
-      const status = document.createElement("span");
-      status.textContent = lane.fallbackUsed ? "已启用兜底" : formatLoopStatus(lane.status);
-      item.append(head, summary, status);
-      wrap.appendChild(item);
-    });
-    return wrap;
-  }
-
-  function formatLoopStatus(status) {
-    const labels = {
-      done: "完成",
-      active: "进行中",
-      pending: "等待",
-      ready: "就绪",
-      pass: "通过",
-      warn: "需注意",
-      missing: "缺失",
-      recommended: "推荐",
-      applied: "已应用",
-    };
-    return labels[status] || status;
-  }
-
-  function getLoopTone(status) {
-    if (status === "done" || status === "pass" || status === "recommended" || status === "applied") return "success";
-    if (status === "active") return "active";
-    if (status === "warn" || status === "missing") return "warning";
-    if (status === "ready") return "ready";
-    return "pending";
-  }
-
-  function formatToolTitle(call) {
-    const names = {
-      get_weather: "已查天气",
-      search_activities: "已查活动票/体验",
-      search_restaurants: "已查餐厅与套餐",
-      check_route: "已查路线",
-      check_availability: "已查订座/票务",
-    };
-    return names[call.name] || call.name;
-  }
-
-  function formatToolStatus(call) {
-    if (call.name === "check_availability" && call.output && call.output.available === false) return "需重排";
-    return "完成";
-  }
-
-  function formatToolReadable(call) {
-    const output = call.output || {};
-    if (call.name === "get_weather") {
-      return output.weather + "，" + output.risk;
-    }
-    if (call.name === "search_activities") {
-      return "找到 " + output.length + " 个可组合活动，继续按同行关系和时间窗筛选。";
-    }
-    if (call.name === "search_restaurants") {
-      return "找到 " + output.length + " 个餐厅候选，检查排队、订座和团购可用性。";
-    }
-    if (call.name === "check_route") {
-      return output.summary || "路线已计算。";
-    }
-    if (call.name === "check_availability") {
-      return output.available
-        ? "可锁定 " + output.selected_slot + "，进入待确认服务包。"
-        : "不可自动锁定：" + output.reason;
-    }
-    return "工具调用完成。";
   }
 
   function renderPlans() {

@@ -17,6 +17,7 @@ from backend_core import (
     sqlite_available,
     validate_intent,
 )
+from graph_runtime import graph_runtime_status, run_intent_graph
 
 
 app = FastAPI(title="Local Life Agent V4 API")
@@ -49,6 +50,17 @@ class CandidateDecisionRequest(BaseModel):
     correctedValue: str | None = Field(default=None, max_length=1000)
 
 
+def intent_error_response(source, error, lessons, runtime_path=None):
+    return {
+        "ok": False,
+        "source": source,
+        "runtimePath": runtime_path,
+        "intent": None,
+        "error": error,
+        "lessonsUsed": lessons,
+    }
+
+
 @app.get("/api/health")
 def health():
     current = get_settings()
@@ -59,6 +71,7 @@ def health():
         "baseUrl": current["base_url"],
         "sqliteAvailable": sqlite_available(current["db_path"]),
         "dbPath": str(current["db_path"]),
+        "langGraph": graph_runtime_status(),
     }
 
 
@@ -66,12 +79,16 @@ def health():
 async def extract_intent(request: IntentRequest):
     current = get_settings()
     if not current["api_key"]:
-        return {
-            "ok": False,
-            "source": "missing_api_key",
-            "error": "OPENAI_API_KEY is not configured.",
-            "lessonsUsed": load_relevant_lessons(request.input, current["db_path"]),
-        }
+        lessons = load_relevant_lessons(request.input, current["db_path"])
+        return intent_error_response("missing_api_key", "OPENAI_API_KEY is not configured.", lessons)
+
+    try:
+        return await run_intent_graph(request.input, request.overrides, current)
+    except RuntimeError:
+        pass
+    except Exception as exc:
+        lessons = load_relevant_lessons(request.input, current["db_path"])
+        return intent_error_response("langgraph_llm_error", str(exc), lessons, "langgraph")
 
     lessons = load_relevant_lessons(request.input, current["db_path"])
     payload = build_chat_payload(request.input, request.overrides, lessons, current["model"])
@@ -89,16 +106,12 @@ async def extract_intent(request: IntentRequest):
         raw_intent = extract_json_object(content)
         intent = validate_intent(raw_intent)
     except Exception as exc:
-        return {
-            "ok": False,
-            "source": "llm_error",
-            "error": str(exc),
-            "lessonsUsed": lessons,
-        }
+        return intent_error_response("llm_error", str(exc), lessons, "direct_llm")
 
     return {
         "ok": True,
         "source": "llm",
+        "runtimePath": "direct_llm",
         "intent": intent,
         "lessonsUsed": lessons,
     }

@@ -10,6 +10,7 @@ from backend_core import (
     save_feedback,
     validate_intent,
 )
+from server import intent_error_response
 
 
 def temp_dir():
@@ -93,3 +94,16 @@ def test_build_chat_payload_includes_lessons():
     )
     assert payload["model"] == "demo-model"
     assert "不要把轻松自动推断为亲子" in payload["messages"][0]["content"]
+
+
+def test_intent_error_response_uses_shared_shape():
+    response = intent_error_response("llm_error", "boom", [], "direct_llm")
+
+    assert response == {
+        "ok": False,
+        "source": "llm_error",
+        "runtimePath": "direct_llm",
+        "intent": None,
+        "error": "boom",
+        "lessonsUsed": [],
+    }

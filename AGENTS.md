@@ -257,3 +257,8 @@ child agent 负责：
 不要用复杂术语掩盖不确定性。
 
 如果任务没有完成，应明确说明阻塞点，而不是给出看似完成的结论。
+
+<!-- SPECKIT START -->
+For Spec Kit governed V4 Runtime work, read:
+`specs/001-v4-runtime-state-machine-memory-loop/plan.md`
+<!-- SPECKIT END -->
