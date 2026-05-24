@@ -5,10 +5,12 @@ from pathlib import Path
 import graph_runtime
 
 
+TEST_TMP_ROOT = Path(__file__).parent / ".pytest_tmp"
+
+
 def temp_dir():
-    base = Path("C:/tmp")
-    base.mkdir(parents=True, exist_ok=True)
-    return tempfile.TemporaryDirectory(dir=base)
+    TEST_TMP_ROOT.mkdir(parents=True, exist_ok=True)
+    return tempfile.TemporaryDirectory(dir=TEST_TMP_ROOT)
 
 
 def test_graph_runtime_status_is_explicit():

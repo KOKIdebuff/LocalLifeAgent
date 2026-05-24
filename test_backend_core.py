@@ -13,10 +13,12 @@ from backend_core import (
 from server import intent_error_response
 
 
+TEST_TMP_ROOT = Path(__file__).parent / ".pytest_tmp"
+
+
 def temp_dir():
-    base = Path("C:/tmp")
-    base.mkdir(parents=True, exist_ok=True)
-    return tempfile.TemporaryDirectory(dir=base)
+    TEST_TMP_ROOT.mkdir(parents=True, exist_ok=True)
+    return tempfile.TemporaryDirectory(dir=TEST_TMP_ROOT)
 
 
 def test_validate_intent_normalizes_fields():
