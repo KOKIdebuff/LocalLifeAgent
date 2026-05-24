@@ -69,6 +69,8 @@
 
 下一阶段目标不是引入重型多 Agent 框架，也不是依赖任何非官方泄露源码，而是在现有基础上把可选后端能力继续收敛成更稳定的轻量 Agent Runtime。推荐目标栈为 LangGraph 轻量编排 + FastAPI + 本地 Mock 数据库 + 可配置真实 LLM，其中 LangGraph 只负责流程调度和状态流转，核心业务逻辑仍保持自研、清晰和可测试。
 
+当前已引入可选 LangGraph 作为 V4 alpha 后端轻量编排层，现阶段主要包裹 `/api/intent` 的意图识别与校验；核心业务逻辑仍由项目自研实现。LangGraph trace 只保留在后端日志或审计记录中，不映射到前端 `agentLoopTrace`。接入边界见 `LANGGRAPH_INTEGRATION.md`。
+
 已经落地：
 
 - 可选后端增强。
@@ -173,6 +175,7 @@ python -m py_compile .\server.py .\backend_core.py .\graph_runtime.py .\test_bac
 - `test_backend_core.py`：后端逻辑单测，采用 `pytest` 风格。
 - `test_graph_runtime.py`：LangGraph 编排节点的轻量单测，验证可用性状态和节点复用现有校验逻辑。
 - `DESIGN.md`：规划策略、工具调用和 V4 alpha 结构设计说明。
+- `LANGGRAPH_INTEGRATION.md`：LangGraph 作为后端轻量编排层的接入边界说明。
 - `DEMO_SCRIPT.md`：3 分钟比赛讲解稿。
 - `progress.md`：当前阶段进度与验证状态。
 - `lessons.md`：关键设计复盘与经验沉淀。
