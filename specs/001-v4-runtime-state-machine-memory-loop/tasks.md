@@ -105,6 +105,33 @@
 
 ---
 
+## Phase 7: Contract Schema Completion
+
+**Purpose**: Make feedback, memory, and runtime contracts machine-checkable before
+future implementation.
+
+- [x] T028 Add feedback and memory schema in `feedback-memory.schema.json`
+- [x] T029 Add future runtime state machine schema in `runtime.schema.json`
+- [x] T030 Expand runtime and memory contract documentation in `specs/001-v4-runtime-state-machine-memory-loop/contracts/runtime-memory-contract.md`
+- [x] T031 Add contract test matrix in `specs/001-v4-runtime-state-machine-memory-loop/contracts/runtime-contract-test-matrix.md`
+- [x] T032 Add standard-library contract tests in `test_contract_schemas.py`
+- [x] T033 Run `.\.venv\Scripts\python.exe -m unittest .\test_contract_schemas.py`
+
+---
+
+## Phase 8: Thin Runtime Implementation
+
+**Purpose**: Implement frontend-agnostic Runtime state and backend enhancement
+results while keeping planning in `agent-core.js`.
+
+- [x] T034 Update Runtime docs and schemas for hybrid frontend dependency
+- [x] T035 Implement `POST /api/runtime` in `server.py`
+- [x] T036 Reuse the existing intent chain between `/api/intent` and `/api/runtime`
+- [x] T037 Add Runtime API tests in `test_runtime_api.py`
+- [x] T038 Run `.\.venv\Scripts\pytest.exe .\test_runtime_api.py`
+
+---
+
 ## Dependencies & Execution Order
 
 - Phase 1 must finish before all other phases.

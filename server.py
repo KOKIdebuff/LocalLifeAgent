@@ -1,4 +1,6 @@
 import os
+from datetime import datetime, timezone
+from uuid import uuid4
 
 import httpx
 from fastapi import FastAPI
@@ -50,6 +52,33 @@ class CandidateDecisionRequest(BaseModel):
     correctedValue: str | None = Field(default=None, max_length=1000)
 
 
+class RuntimeRequest(BaseModel):
+    sessionId: str | None = None
+    input: str = Field(min_length=1, max_length=1000)
+    overrides: dict = Field(default_factory=dict)
+    event: dict | None = None
+    feedback: dict | None = None
+    memoryDecision: dict | None = None
+
+
+RUNTIME_TRANSITIONS = {
+    "intent_loading": ["clarifying", "planning_local", "failed_recoverable"],
+    "clarifying": ["planning_local"],
+    "planning_local": ["researching_tools"],
+    "researching_tools": ["merging_plans"],
+    "merging_plans": ["verifying_plan"],
+    "verifying_plan": ["ready_for_confirmation", "replanning"],
+    "replanning": ["verifying_plan"],
+    "ready_for_confirmation": ["executing_mock_actions", "feedback_capture"],
+    "executing_mock_actions": ["feedback_capture"],
+    "feedback_capture": ["memory_candidate_review", "done"],
+    "memory_candidate_review": ["memory_committed", "done"],
+    "memory_committed": ["done"],
+    "failed_recoverable": ["planning_local"],
+    "done": [],
+}
+
+
 def intent_error_response(source, error, lessons, runtime_path=None):
     return {
         "ok": False,
@@ -61,37 +90,69 @@ def intent_error_response(source, error, lessons, runtime_path=None):
     }
 
 
-@app.get("/api/health")
-def health():
-    current = get_settings()
+def runtime_now():
+    return datetime.now(timezone.utc).isoformat()
+
+
+def runtime_event(event_type, from_state, to_state, reason=None):
+    event = {
+        "type": event_type,
+        "fromState": from_state,
+        "toState": to_state,
+        "createdAt": runtime_now(),
+    }
+    if reason:
+        event["reason"] = reason
+    return event
+
+
+def runtime_session(request, current_state, events, allowed_next_states=None):
+    allowed = allowed_next_states if allowed_next_states is not None else RUNTIME_TRANSITIONS[current_state]
     return {
-        "ok": True,
-        "modelConfigured": bool(current["api_key"] and current["model"]),
-        "model": current["model"],
-        "baseUrl": current["base_url"],
-        "sqliteAvailable": sqlite_available(current["db_path"]),
-        "dbPath": str(current["db_path"]),
-        "langGraph": graph_runtime_status(),
+        "sessionId": request.sessionId or str(uuid4()),
+        "inputText": request.input,
+        "overrides": request.overrides,
+        "currentState": current_state,
+        "allowedNextStates": allowed,
+        "selectedPlanId": None,
+        "executedActions": [],
+        "events": events,
+        "memoryPriorityRule": "current_request_overrides_memory",
     }
 
 
-@app.post("/api/intent")
-async def extract_intent(request: IntentRequest):
-    current = get_settings()
+def runtime_response(request, ok, status, current_state, events, allowed_next_states=None, **extra):
+    allowed = allowed_next_states if allowed_next_states is not None else RUNTIME_TRANSITIONS[current_state]
+    response = {
+        "ok": ok,
+        "status": status,
+        "session": runtime_session(request, current_state, events, allowed),
+        "currentState": current_state,
+        "allowedNextStates": allowed,
+    }
+    response.update(extra)
+    return response
+
+
+def intent_needs_clarification(intent):
+    return bool(intent and intent.get("missingFields"))
+
+
+async def resolve_intent_response(input_text, overrides, current):
     if not current["api_key"]:
-        lessons = load_relevant_lessons(request.input, current["db_path"])
+        lessons = load_relevant_lessons(input_text, current["db_path"])
         return intent_error_response("missing_api_key", "OPENAI_API_KEY is not configured.", lessons)
 
     try:
-        return await run_intent_graph(request.input, request.overrides, current)
+        return await run_intent_graph(input_text, overrides, current)
     except RuntimeError:
         pass
     except Exception as exc:
-        lessons = load_relevant_lessons(request.input, current["db_path"])
+        lessons = load_relevant_lessons(input_text, current["db_path"])
         return intent_error_response("langgraph_llm_error", str(exc), lessons, "langgraph")
 
-    lessons = load_relevant_lessons(request.input, current["db_path"])
-    payload = build_chat_payload(request.input, request.overrides, lessons, current["model"])
+    lessons = load_relevant_lessons(input_text, current["db_path"])
+    payload = build_chat_payload(input_text, overrides, lessons, current["model"])
     headers = {
         "Authorization": "Bearer " + current["api_key"],
         "Content-Type": "application/json",
@@ -115,6 +176,120 @@ async def extract_intent(request: IntentRequest):
         "intent": intent,
         "lessonsUsed": lessons,
     }
+
+
+@app.get("/api/health")
+def health():
+    current = get_settings()
+    return {
+        "ok": True,
+        "modelConfigured": bool(current["api_key"] and current["model"]),
+        "model": current["model"],
+        "baseUrl": current["base_url"],
+        "sqliteAvailable": sqlite_available(current["db_path"]),
+        "dbPath": str(current["db_path"]),
+        "langGraph": graph_runtime_status(),
+    }
+
+
+@app.post("/api/intent")
+async def extract_intent(request: IntentRequest):
+    current = get_settings()
+    return await resolve_intent_response(request.input, request.overrides, current)
+
+
+@app.post("/api/runtime")
+async def runtime(request: RuntimeRequest):
+    current = get_settings()
+
+    if request.memoryDecision:
+        decision = request.memoryDecision
+        result = decide_memory_candidate(
+            decision.get("candidateId"),
+            decision.get("action"),
+            decision.get("correctedValue"),
+            current["db_path"],
+        )
+        if result.get("status") == "adopted":
+            events = [runtime_event("memory_committed", "memory_candidate_review", "memory_committed")]
+            return runtime_response(
+                request,
+                True,
+                "memory_committed",
+                "memory_committed",
+                events,
+                memoryId=result.get("memoryId"),
+                memoryDecisionResult=result,
+            )
+        events = [runtime_event("memory_ignored", "memory_candidate_review", "done")]
+        return runtime_response(
+            request,
+            bool(result.get("ok")),
+            "memory_ignored" if result.get("ok") else "memory_decision_failed",
+            "done",
+            events,
+            memoryId=None,
+            memoryDecisionResult=result,
+        )
+
+    if request.feedback:
+        payload = dict(request.feedback)
+        payload.setdefault("input", request.input)
+        result = save_feedback(payload, current["db_path"])
+        next_states = ["memory_candidate_review"] if result.get("candidate") else ["done"]
+        events = [runtime_event("feedback_captured", "ready_for_confirmation", "feedback_capture")]
+        if result.get("candidate"):
+            events.append(runtime_event("memory_candidate_created", "feedback_capture", "memory_candidate_review"))
+        return runtime_response(
+            request,
+            True,
+            "feedback_captured",
+            "feedback_capture",
+            events,
+            next_states,
+            feedbackId=result.get("feedbackId"),
+            feedbackResult=result,
+        )
+
+    intent_result = await resolve_intent_response(request.input, request.overrides, current)
+    if not intent_result.get("ok"):
+        events = [runtime_event("recoverable_failure", "intent_loading", "failed_recoverable", intent_result.get("error"))]
+        return runtime_response(
+            request,
+            False,
+            "recoverable_failure",
+            "failed_recoverable",
+            events,
+            error=intent_result.get("error"),
+            intentResult=intent_result,
+        )
+
+    if intent_needs_clarification(intent_result.get("intent")):
+        missing = intent_result["intent"].get("missingFields", [])
+        key = missing[0] if missing else "groupType"
+        events = [runtime_event("clarification_required", "intent_loading", "clarifying")]
+        return runtime_response(
+            request,
+            True,
+            "clarification_required",
+            "clarifying",
+            events,
+            clarification={
+                "key": key,
+                "question": "Please provide missing planning information before local planning continues.",
+            },
+            intentResult=intent_result,
+        )
+
+    events = [runtime_event("intent_loaded", "intent_loading", "planning_local")]
+    return runtime_response(
+        request,
+        True,
+        "planning_ready",
+        "planning_local",
+        events,
+        intentResult=intent_result,
+    )
 
 
 @app.post("/api/feedback")

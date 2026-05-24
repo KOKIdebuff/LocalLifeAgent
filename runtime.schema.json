@@ -1,0 +1,575 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "runtime.schema.json",
+  "title": "V4 runtime state machine contract bundle",
+  "description": "Machine-readable contract for the thin POST /api/runtime aggregation endpoint. The endpoint carries runtime state and backend enhancement results, while planning remains owned by the frontend agent-core.js module until a later migration.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/RuntimeRequest"
+    },
+    {
+      "$ref": "#/$defs/RuntimeResponse"
+    },
+    {
+      "$ref": "#/$defs/RuntimeSession"
+    },
+    {
+      "$ref": "#/$defs/RuntimeEvent"
+    },
+    {
+      "$ref": "#/$defs/RuntimeTransition"
+    }
+  ],
+  "$defs": {
+    "RuntimeRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "input"
+      ],
+      "properties": {
+        "sessionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "input": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "overrides": {
+          "type": "object",
+          "default": {},
+          "additionalProperties": true
+        },
+        "event": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/RuntimeEvent"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "feedback": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true
+        },
+        "memoryDecision": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true
+        }
+      }
+    },
+    "RuntimeResponse": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/RuntimeSuccessResponse"
+        },
+        {
+          "$ref": "#/$defs/RuntimeClarificationResponse"
+        },
+        {
+          "$ref": "#/$defs/RuntimeRecoverableFailureResponse"
+        },
+        {
+          "$ref": "#/$defs/RuntimeFeedbackCapturedResponse"
+        },
+        {
+          "$ref": "#/$defs/RuntimeMemoryCommittedResponse"
+        },
+        {
+          "$ref": "#/$defs/RuntimeMemoryIgnoredResponse"
+        }
+      ]
+    },
+    "RuntimeSuccessResponse": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "ok",
+        "status",
+        "session",
+        "currentState",
+        "allowedNextStates",
+        "intentResult"
+      ],
+      "properties": {
+        "ok": {
+          "const": true
+        },
+        "status": {
+          "const": "planning_ready"
+        },
+        "session": {
+          "$ref": "#/$defs/RuntimeSession"
+        },
+        "currentState": {
+          "enum": [
+            "planning_local",
+            "researching_tools",
+            "merging_plans",
+            "verifying_plan",
+            "ready_for_confirmation",
+            "executing_mock_actions",
+            "done"
+          ]
+        },
+        "allowedNextStates": {
+          "$ref": "#/$defs/RuntimeStateList"
+        },
+        "intentResult": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "RuntimeClarificationResponse": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "ok",
+        "status",
+        "session",
+        "currentState",
+        "allowedNextStates",
+        "clarification",
+        "intentResult"
+      ],
+      "properties": {
+        "ok": {
+          "const": true
+        },
+        "status": {
+          "const": "clarification_required"
+        },
+        "session": {
+          "$ref": "#/$defs/RuntimeSession"
+        },
+        "currentState": {
+          "const": "clarifying"
+        },
+        "allowedNextStates": {
+          "prefixItems": [
+            {
+              "const": "planning_local"
+            }
+          ],
+          "items": false
+        },
+        "clarification": {
+          "type": "object",
+          "required": [
+            "key",
+            "question"
+          ],
+          "properties": {
+            "key": {
+              "enum": [
+                "groupType",
+                "timePreset"
+              ]
+            },
+            "question": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true
+        },
+        "intentResult": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "RuntimeRecoverableFailureResponse": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "ok",
+        "status",
+        "session",
+        "currentState",
+        "allowedNextStates",
+        "error"
+      ],
+      "properties": {
+        "ok": {
+          "const": false
+        },
+        "status": {
+          "const": "recoverable_failure"
+        },
+        "session": {
+          "$ref": "#/$defs/RuntimeSession"
+        },
+        "currentState": {
+          "const": "failed_recoverable"
+        },
+        "allowedNextStates": {
+          "prefixItems": [
+            {
+              "const": "planning_local"
+            }
+          ],
+          "items": false
+        },
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "RuntimeFeedbackCapturedResponse": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "ok",
+        "status",
+        "session",
+        "currentState",
+        "allowedNextStates",
+        "feedbackId",
+        "feedbackResult"
+      ],
+      "properties": {
+        "ok": {
+          "const": true
+        },
+        "status": {
+          "const": "feedback_captured"
+        },
+        "session": {
+          "$ref": "#/$defs/RuntimeSession"
+        },
+        "currentState": {
+          "const": "feedback_capture"
+        },
+        "allowedNextStates": {
+          "$ref": "#/$defs/RuntimeStateList"
+        },
+        "feedbackId": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "feedbackResult": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "RuntimeMemoryCommittedResponse": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "ok",
+        "status",
+        "session",
+        "currentState",
+        "allowedNextStates",
+        "memoryId",
+        "memoryDecisionResult"
+      ],
+      "properties": {
+        "ok": {
+          "const": true
+        },
+        "status": {
+          "const": "memory_committed"
+        },
+        "session": {
+          "$ref": "#/$defs/RuntimeSession"
+        },
+        "currentState": {
+          "const": "memory_committed"
+        },
+        "allowedNextStates": {
+          "prefixItems": [
+            {
+              "const": "done"
+            }
+          ],
+          "items": false
+        },
+        "memoryId": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "memoryDecisionResult": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "RuntimeMemoryIgnoredResponse": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "ok",
+        "status",
+        "session",
+        "currentState",
+        "allowedNextStates",
+        "memoryId",
+        "memoryDecisionResult"
+      ],
+      "properties": {
+        "ok": {
+          "const": true
+        },
+        "status": {
+          "const": "memory_ignored"
+        },
+        "session": {
+          "$ref": "#/$defs/RuntimeSession"
+        },
+        "currentState": {
+          "const": "done"
+        },
+        "allowedNextStates": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "memoryId": {
+          "type": "null"
+        },
+        "memoryDecisionResult": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "RuntimeSession": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sessionId",
+        "inputText",
+        "currentState",
+        "allowedNextStates",
+        "events",
+        "memoryPriorityRule"
+      ],
+      "properties": {
+        "sessionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "inputText": {
+          "type": "string"
+        },
+        "overrides": {
+          "type": "object",
+          "additionalProperties": true,
+          "default": {}
+        },
+        "currentState": {
+          "$ref": "#/$defs/RuntimeState"
+        },
+        "allowedNextStates": {
+          "$ref": "#/$defs/RuntimeStateList"
+        },
+        "selectedPlanId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "executedActions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "default": []
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RuntimeEvent"
+          }
+        },
+        "memoryPriorityRule": {
+          "const": "current_request_overrides_memory"
+        }
+      }
+    },
+    "RuntimeEvent": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "type",
+        "fromState",
+        "toState",
+        "createdAt"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "intent_loaded",
+            "clarification_required",
+            "clarification_answered",
+            "planning_completed",
+            "tools_researched",
+            "plans_merged",
+            "plan_verified",
+            "replan_requested",
+            "confirmation_ready",
+            "mock_execution_completed",
+            "feedback_captured",
+            "memory_candidate_created",
+            "memory_ignored",
+            "memory_committed",
+            "recoverable_failure",
+            "session_done"
+          ]
+        },
+        "fromState": {
+          "$ref": "#/$defs/RuntimeState"
+        },
+        "toState": {
+          "$ref": "#/$defs/RuntimeState"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    },
+    "RuntimeTransition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fromState",
+        "toState",
+        "eventType"
+      ],
+      "properties": {
+        "fromState": {
+          "$ref": "#/$defs/RuntimeState"
+        },
+        "toState": {
+          "$ref": "#/$defs/RuntimeState"
+        },
+        "eventType": {
+          "$ref": "#/$defs/RuntimeEventType"
+        }
+      }
+    },
+    "RuntimeState": {
+      "enum": [
+        "intent_loading",
+        "clarifying",
+        "planning_local",
+        "researching_tools",
+        "merging_plans",
+        "verifying_plan",
+        "replanning",
+        "ready_for_confirmation",
+        "executing_mock_actions",
+        "feedback_capture",
+        "memory_candidate_review",
+        "memory_committed",
+        "failed_recoverable",
+        "done"
+      ]
+    },
+    "RuntimeStateList": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/RuntimeState"
+      }
+    },
+    "RuntimeEventType": {
+      "enum": [
+        "intent_loaded",
+        "clarification_required",
+        "clarification_answered",
+        "planning_completed",
+        "tools_researched",
+        "plans_merged",
+        "plan_verified",
+        "replan_requested",
+        "confirmation_ready",
+        "mock_execution_completed",
+        "feedback_captured",
+        "memory_candidate_created",
+        "memory_ignored",
+        "memory_committed",
+        "recoverable_failure",
+        "session_done"
+      ]
+    }
+  },
+  "x-runtimeTransitions": {
+    "intent_loading": [
+      "clarifying",
+      "planning_local",
+      "failed_recoverable"
+    ],
+    "clarifying": [
+      "planning_local"
+    ],
+    "planning_local": [
+      "researching_tools"
+    ],
+    "researching_tools": [
+      "merging_plans"
+    ],
+    "merging_plans": [
+      "verifying_plan"
+    ],
+    "verifying_plan": [
+      "ready_for_confirmation",
+      "replanning"
+    ],
+    "replanning": [
+      "verifying_plan"
+    ],
+    "ready_for_confirmation": [
+      "executing_mock_actions",
+      "feedback_capture"
+    ],
+    "executing_mock_actions": [
+      "feedback_capture"
+    ],
+    "feedback_capture": [
+      "memory_candidate_review",
+      "done"
+    ],
+    "memory_candidate_review": [
+      "memory_committed",
+      "done"
+    ],
+    "memory_committed": [
+      "done"
+    ],
+    "failed_recoverable": [
+      "planning_local"
+    ],
+    "done": []
+  },
+  "x-apiStatus": "thin_runtime_implemented",
+  "x-frontendMigration": {
+    "target": "hybrid_dependency",
+    "planningEngine": "agent-core.js",
+    "runtimeRole": "state_and_backend_enhancement",
+    "noUiSpecificFields": true,
+    "planResultInRuntime": false
+  },
+  "x-mockBoundary": {
+    "executionActions": "mock_only",
+    "realExternalActionsAllowed": false
+  }
+}

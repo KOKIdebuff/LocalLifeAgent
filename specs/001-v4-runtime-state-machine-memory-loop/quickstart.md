@@ -38,10 +38,28 @@ unchanged after adding the V4 state/memory artifacts.
    .\.venv\Scripts\pytest.exe .\test_backend_core.py .\test_graph_runtime.py
    ```
 
+5. Validate the V4 contract schemas and fixed runtime transition table:
+
+   ```powershell
+   .\.venv\Scripts\python.exe -m unittest .\test_contract_schemas.py
+   ```
+
+6. Validate thin Runtime backend behavior:
+
+   ```powershell
+   .\.venv\Scripts\pytest.exe .\test_runtime_api.py
+   ```
+
 ## Expected Result
 
 - Spec Kit reports version `0.8.7`.
 - `.specify/`, `.agents/skills/`, and this feature directory exist.
-- Business-code files are not changed by this documentation phase except for the
-  spec-kit `AGENTS.md` context pointer.
+- `intent.schema.json`, `feedback-memory.schema.json`, and
+  `runtime.schema.json` parse as valid JSON.
+- `runtime.schema.json` exposes the fixed V4 transition table through
+  `x-runtimeTransitions`.
+- `POST /api/runtime` is available as a thin Runtime endpoint for state and
+  backend enhancement results.
+- Business-code changes are limited to the thin Runtime endpoint and shared
+  intent helper in `server.py`; frontend planning code remains unchanged.
 - Existing tests pass.

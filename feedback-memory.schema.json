@@ -1,0 +1,393 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "feedback-memory.schema.json",
+  "title": "Feedback and memory contract bundle",
+  "description": "Machine-readable contract for the existing feedback and memory candidate endpoints. This schema preserves the current alpha wire shapes and does not require a runtime behavior change.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/FeedbackRequest"
+    },
+    {
+      "$ref": "#/$defs/FeedbackResponse"
+    },
+    {
+      "$ref": "#/$defs/CandidateDecisionRequest"
+    },
+    {
+      "$ref": "#/$defs/CandidateDecisionSuccessResponse"
+    },
+    {
+      "$ref": "#/$defs/CandidateDecisionErrorResponse"
+    },
+    {
+      "$ref": "#/$defs/MemoryCandidate"
+    },
+    {
+      "$ref": "#/$defs/LongTermMemory"
+    },
+    {
+      "$ref": "#/$defs/MemoryUsageEvent"
+    }
+  ],
+  "$defs": {
+    "FeedbackRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "input"
+      ],
+      "properties": {
+        "input": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "llmIntent": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true
+        },
+        "userCorrection": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 1000
+        },
+        "failureType": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 80,
+          "default": "general"
+        }
+      }
+    },
+    "FeedbackResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ok",
+        "feedbackId",
+        "candidate",
+        "message"
+      ],
+      "properties": {
+        "ok": {
+          "const": true
+        },
+        "feedbackId": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "candidate": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/MemoryCandidate"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
+    "CandidateDecisionRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "action"
+      ],
+      "properties": {
+        "action": {
+          "enum": [
+            "adopt",
+            "ignore",
+            "correct"
+          ]
+        },
+        "correctedValue": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 1000
+        }
+      }
+    },
+    "CandidateDecisionSuccessResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ok",
+        "candidateId",
+        "status",
+        "memoryId",
+        "memory"
+      ],
+      "properties": {
+        "ok": {
+          "const": true
+        },
+        "candidateId": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "status": {
+          "enum": [
+            "adopted",
+            "ignored"
+          ]
+        },
+        "memoryId": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "memory": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/LongTermMemory"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "CandidateDecisionErrorResponse": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "ok",
+        "error"
+      ],
+      "properties": {
+        "ok": {
+          "const": false
+        },
+        "error": {
+          "enum": [
+            "candidate_not_found",
+            "candidate_already_decided",
+            "invalid_action"
+          ]
+        },
+        "candidate": {
+          "$ref": "#/$defs/MemoryCandidate"
+        }
+      }
+    },
+    "MemoryCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "feedbackId",
+        "type",
+        "key",
+        "value",
+        "confidence",
+        "evidence",
+        "scope",
+        "sensitivityLevel",
+        "source",
+        "status",
+        "reason",
+        "createdAt"
+      ],
+      "properties": {
+        "id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "feedbackId": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "type": {
+          "$ref": "#/$defs/MemoryType"
+        },
+        "key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "scope": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sensitivityLevel": {
+          "$ref": "#/$defs/SensitivityLevel"
+        },
+        "source": {
+          "enum": [
+            "explicit_feedback",
+            "inferred_from_feedback"
+          ]
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "adopted",
+            "ignored"
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "createdAt": {
+          "type": "string"
+        }
+      }
+    },
+    "LongTermMemory": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "id",
+        "type",
+        "key",
+        "value",
+        "lesson",
+        "confidence",
+        "evidence",
+        "scope",
+        "sensitivityLevel",
+        "source",
+        "createdAt",
+        "lastSeen"
+      ],
+      "properties": {
+        "id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "type": {
+          "$ref": "#/$defs/MemoryType"
+        },
+        "key": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        },
+        "lesson": {
+          "type": "string"
+        },
+        "avoidance": {
+          "type": "string"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "scope": {
+          "type": "string"
+        },
+        "sensitivityLevel": {
+          "$ref": "#/$defs/SensitivityLevel"
+        },
+        "source": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "lastSeen": {
+          "type": "string"
+        }
+      }
+    },
+    "MemoryUsageEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "inputText",
+        "memoryIds",
+        "createdAt",
+        "priorityRule"
+      ],
+      "properties": {
+        "inputText": {
+          "type": "string"
+        },
+        "memoryIds": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "priorityRule": {
+          "const": "current_request_overrides_memory"
+        }
+      }
+    },
+    "MemoryType": {
+      "enum": [
+        "user_preference",
+        "negative_preference",
+        "planning_skill",
+        "episode_memory"
+      ]
+    },
+    "SensitivityLevel": {
+      "enum": [
+        "L0",
+        "L1",
+        "L2",
+        "L3"
+      ]
+    }
+  },
+  "x-privacyRules": {
+    "longTermMemoryRequires": [
+      "adopt",
+      "correct"
+    ],
+    "blockedByDefault": [
+      "L2",
+      "L3"
+    ],
+    "memoryConflictPriority": "current_request_overrides_memory"
+  }
+}
