@@ -204,7 +204,9 @@ LangGraph + FastAPI + 本地 Mock 数据库 + 真实 LLM
 - `test_contract_schemas.py` 与 `test_runtime_api.py` 已存在并可通过验证。
 - 这组能力是兼容性增量，不改变“外部执行动作全部 Mock”的产品边界，也不表示完整 V4 Runtime 已完成。
 
-## 已执行验证
+## 当前验证基线（2026-05-25 已执行）
+
+基线规则：Python 相关验证统一使用项目虚拟环境 `.\.venv\Scripts\python.exe` 运行，不再以全局环境是否安装 `pytest` 作为项目验证状态判断依据。PowerShell 下前端回归使用 `npm.cmd`，避免 `npm.ps1` 被执行策略拦截。
 
 已执行：
 
@@ -212,7 +214,7 @@ LangGraph + FastAPI + 本地 Mock 数据库 + 真实 LLM
 npm.cmd test
 .\.venv\Scripts\python.exe -m py_compile .\server.py .\backend_core.py .\graph_runtime.py .\test_backend_core.py .\test_graph_runtime.py .\test_contract_schemas.py .\test_runtime_api.py
 .\.venv\Scripts\python.exe -m unittest .\test_contract_schemas.py
-.\.venv\Scripts\pytest.exe .\test_backend_core.py .\test_graph_runtime.py .\test_runtime_api.py -q
+.\.venv\Scripts\python.exe -m pytest .\test_backend_core.py .\test_graph_runtime.py .\test_runtime_api.py -q
 .\.venv\Scripts\specify.exe check
 ```
 
@@ -221,8 +223,7 @@ npm.cmd test
 - `npm.cmd test` 通过，输出 `All agent-core tests passed.`。
 - Python 后端与测试文件通过语法级检查。
 - 契约测试通过，共 7 项。
-- Runtime API 测试通过，共 6 项。
-- 后端核心与 LangGraph 测试通过，共 10 项。
+- pytest 基线通过，共 16 项：后端核心、LangGraph 编排与 Runtime API 测试均已执行。
 - Spec Kit `0.8.7` 自检通过。
 - pytest 运行期间出现 LangGraph 依赖的弃用告警，当前不影响测试通过，但应作为后续依赖治理事项保留。
 
@@ -232,8 +233,11 @@ npm.cmd test
 
 - `README.md`
 - `progress.md`
+- `DESIGN.md`
+- `lessons.md`
 - `specs/001-v4-runtime-state-machine-memory-loop/spec.md`
 - `specs/001-v4-runtime-state-machine-memory-loop/plan.md`
+- `specs/001-v4-runtime-state-machine-memory-loop/quickstart.md`
 - `specs/001-v4-runtime-state-machine-memory-loop/tasks.md`
 - `specs/001-v4-runtime-state-machine-memory-loop/analysis.md`
 
@@ -241,6 +245,7 @@ npm.cmd test
 
 - 将当前口径统一为“V3 Mock 主链路 + V4 alpha 薄 Runtime 后端切片已落地”。
 - 记录薄层 `POST /api/runtime`、alpha 契约及已通过测试，消除“仅文档阶段”的过时表述。
+- 固定 `.venv` pytest 与 PowerShell 前端回归命令，防止全局环境状态再次污染进度判断。
 - 保持“外部执行动作全部 Mock”及“当前不是完整生产级 Runtime”的边界。
 
 ## 剩余风险

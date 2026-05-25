@@ -127,11 +127,19 @@ python -m uvicorn server:app --reload --host 127.0.0.1 --port 8000
 
 ## 验证方式
 
-核心前端逻辑回归：
+### 当前可复现验证基线
+
+PowerShell 下使用 `npm.cmd`，避免本机脚本执行策略拦截 `npm.ps1`：
 
 ```powershell
-npm test
+npm.cmd test
+.\.venv\Scripts\python.exe -m py_compile .\server.py .\backend_core.py .\graph_runtime.py .\test_backend_core.py .\test_graph_runtime.py .\test_contract_schemas.py .\test_runtime_api.py
+.\.venv\Scripts\python.exe -m unittest .\test_contract_schemas.py
+.\.venv\Scripts\python.exe -m pytest .\test_backend_core.py .\test_graph_runtime.py .\test_runtime_api.py -q
+.\.venv\Scripts\specify.exe check
 ```
+
+其中 Python 与 pytest 统一从项目 `.venv` 运行，当前基线不依赖全局 Python 环境。
 
 可选的 Node 语法检查：
 
@@ -139,15 +147,6 @@ npm test
 node --check .\agent-core.js
 node --check .\app.js
 node --check .\tests.js
-```
-
-可选的 Python 语法检查：
-
-```powershell
-.\.venv\Scripts\python.exe -m py_compile .\server.py .\backend_core.py .\graph_runtime.py .\test_backend_core.py .\test_graph_runtime.py .\test_contract_schemas.py .\test_runtime_api.py
-
-.\.venv\Scripts\python.exe -m unittest .\test_contract_schemas.py
-.\.venv\Scripts\pytest.exe .\test_backend_core.py .\test_graph_runtime.py .\test_runtime_api.py -q
 ```
 
 当前验证覆盖：
@@ -169,7 +168,7 @@ node --check .\tests.js
 - Python 后端与测试文件通过语法级检查。
 - `test_contract_schemas.py` 通过，共 7 项测试。
 - `test_runtime_api.py` 通过，共 6 项测试。
-- `test_backend_core.py` 与 `test_graph_runtime.py` 通过，共 10 项测试；当前仅存在 LangGraph 依赖弃用告警，不阻塞 alpha 验证。
+- `test_backend_core.py`、`test_graph_runtime.py` 与 `test_runtime_api.py` 通过，共 16 项 pytest 测试；当前仅存在 LangGraph 依赖弃用告警，不阻塞 alpha 验证。
 
 ## 文件说明
 

@@ -98,9 +98,9 @@
 
 - [x] T022 Create cross-artifact analysis in `specs/001-v4-runtime-state-machine-memory-loop/analysis.md`
 - [x] T023 Run `.venv\Scripts\specify.exe check`
-- [x] T024 Run `npm test`
+- [x] T024 Run `npm.cmd test` as the PowerShell-safe frontend baseline
 - [x] T025 Run Python compile checks for backend and graph files
-- [x] T026 Run pytest for backend and graph tests if available
+- [x] T026 Run `.\.venv\Scripts\python.exe -m pytest .\test_backend_core.py .\test_graph_runtime.py .\test_runtime_api.py -q`
 - [x] T027 Review `git status --short` to confirm no unintended business-code edits
 
 ---
@@ -128,7 +128,7 @@ results while keeping planning in `agent-core.js`.
 - [x] T035 Implement `POST /api/runtime` in `server.py`
 - [x] T036 Reuse the existing intent chain between `/api/intent` and `/api/runtime`
 - [x] T037 Add Runtime API tests in `test_runtime_api.py`
-- [x] T038 Run `.\.venv\Scripts\pytest.exe .\test_runtime_api.py`
+- [x] T038 Validate Runtime API coverage within the `.venv` pytest baseline
 
 ---
 

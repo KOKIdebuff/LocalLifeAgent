@@ -2,8 +2,9 @@
 
 ## Goal
 
-Validate that Spec Kit governance is in place and current runtime behavior remains
-unchanged after adding the V4 state/memory artifacts.
+Validate that Spec Kit governance, the V4 contract set, and the compatible thin
+Runtime backend alpha slice remain reproducible from the project virtual
+environment.
 
 ## Checks
 
@@ -28,26 +29,14 @@ unchanged after adding the V4 state/memory artifacts.
    git diff --name-only
    ```
 
-4. Run current regression checks:
+4. Run the current validation baseline. Use `npm.cmd` in PowerShell to avoid
+   local `npm.ps1` execution-policy blocks; run Python checks through `.venv`:
 
    ```powershell
-   npm test
-   # If PowerShell blocks npm.ps1, use:
    npm.cmd test
-   .\.venv\Scripts\python.exe -m py_compile .\server.py .\backend_core.py .\graph_runtime.py .\test_backend_core.py .\test_graph_runtime.py
-   .\.venv\Scripts\pytest.exe .\test_backend_core.py .\test_graph_runtime.py
-   ```
-
-5. Validate the V4 contract schemas and fixed runtime transition table:
-
-   ```powershell
+   .\.venv\Scripts\python.exe -m py_compile .\server.py .\backend_core.py .\graph_runtime.py .\test_backend_core.py .\test_graph_runtime.py .\test_contract_schemas.py .\test_runtime_api.py
    .\.venv\Scripts\python.exe -m unittest .\test_contract_schemas.py
-   ```
-
-6. Validate thin Runtime backend behavior:
-
-   ```powershell
-   .\.venv\Scripts\pytest.exe .\test_runtime_api.py
+   .\.venv\Scripts\python.exe -m pytest .\test_backend_core.py .\test_graph_runtime.py .\test_runtime_api.py -q
    ```
 
 ## Expected Result
@@ -62,4 +51,7 @@ unchanged after adding the V4 state/memory artifacts.
   backend enhancement results.
 - Business-code changes are limited to the thin Runtime endpoint and shared
   intent helper in `server.py`; frontend planning code remains unchanged.
-- Existing tests pass.
+- `npm.cmd test` passes; contract tests report 7 passing tests; pytest reports
+  16 passing tests for backend, graph runtime, and thin Runtime API behavior.
+- A LangGraph dependency deprecation warning may be emitted during pytest; it is
+  recorded as non-blocking for the current alpha baseline.

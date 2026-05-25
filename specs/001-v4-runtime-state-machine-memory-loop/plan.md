@@ -16,7 +16,7 @@ and Mock execution behavior remain unchanged.
 **Language/Version**: JavaScript for the current static demo, Python 3.12 for the optional backend  
 **Primary Dependencies**: Existing FastAPI, Pydantic, httpx, pytest, optional LangGraph, local browser JavaScript  
 **Storage**: Existing local SQLite memory store plus audit JSONL  
-**Testing**: `npm test`, Python compile checks, pytest when available  
+**Testing**: `npm.cmd test`, `.venv` Python compile checks, contract unittest, and `.venv` pytest baseline
 **Target Platform**: Local Windows development and browser demo  
 **Project Type**: Static Web Demo with optional local API backend  
 **Performance Goals**: Preserve current local demo responsiveness; keep the optional thin Runtime endpoint lightweight
