@@ -2,8 +2,8 @@
 
 **Feature Branch**: `001-v4-runtime-state-machine-memory-loop`  
 **Created**: 2026-05-24  
-**Status**: Draft  
-**Input**: User description: "Define the V4 runtime state machine for LocalLifeAgent and connect intent recognition, clarification, planning, verification, replanning, confirmation, feedback, memory candidates, and long-term memory references without changing current API behavior."
+**Status**: Implemented Alpha Slice (state calibrated 2026-05-25)
+**Input**: User description: "Define the V4 runtime state machine for LocalLifeAgent and connect intent recognition, clarification, planning, verification, replanning, confirmation, feedback, memory candidates, and long-term memory references without changing existing API behavior."
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -84,8 +84,8 @@ and confirm no required request or response shape changes are introduced.
 - **FR-006**: The memory loop MUST block L2/L3 sensitive information from long-term memory by default.
 - **FR-007**: The runtime MUST keep backend/LLM/LangGraph failure as a recoverable path that falls back to local rules or static demo behavior.
 - **FR-008**: The contract MUST distinguish Mock execution actions from real external platform actions.
-- **FR-009**: The runtime plan MUST identify the minimum tests needed before any future implementation changes are made.
-- **FR-010**: This feature MUST NOT implement runtime behavior changes; it creates the specification, plan, contracts, and task list for a later implementation.
+- **FR-009**: The runtime plan MUST identify and execute the minimum tests needed for the alpha contract and thin backend Runtime slice.
+- **FR-010**: This feature MAY add a compatible optional `POST /api/runtime` endpoint for Runtime state and backend enhancement aggregation; it MUST NOT migrate frontend planning behavior or introduce real external execution.
 
 ### Key Entities *(include if feature involves data)*
 
@@ -105,12 +105,12 @@ and confirm no required request or response shape changes are introduced.
 - **SC-002**: 100% of existing V4 alpha endpoints are covered by compatibility notes.
 - **SC-003**: A reviewer can identify the allowed next state for every documented state without reading implementation code.
 - **SC-004**: The memory loop documents blocking behavior for all L2/L3 sensitive feedback examples in the current project rules.
-- **SC-005**: The generated task list separates documentation/contract work from future implementation tasks so implementation can be deferred safely.
+- **SC-005**: The generated task list separates completed contract/thin Runtime work from future full Runtime migration tasks so further implementation can be planned safely.
 
 ## Assumptions
 
 - V4 productization starts with Runtime state and memory loop governance, not POI or Mock API productization.
 - Only high-risk V4 features require Spec Kit artifacts.
-- Existing API behavior remains compatible during this first governance step.
+- Existing `/api/intent`, `/api/feedback`, and candidate-decision behavior remains compatible; `POST /api/runtime` is an additive optional backend endpoint.
 - Existing uncommitted business-code changes are preserved and not reverted.
-- Tests in this phase verify initialization and current behavior; they do not validate unimplemented runtime behavior.
+- The implemented alpha slice aggregates backend Runtime state and enhancement results; planning, replanning, and Mock execution remain frontend-owned until a future migration.

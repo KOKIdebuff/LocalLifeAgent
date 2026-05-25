@@ -52,6 +52,7 @@
 - 前端已经接入可选后端增强；如果后端不可用、未配置密钥或置信度不足，会自动回退到本地规则解析。
 - 结构化记忆链路已经存在，支持反馈写入、候选确认和后续参考。
 - UI 已显示 `Reflect` 阶段和反馈面板，支持用户提交反馈和处理候选记忆。
+- 后端已提供薄层 `POST /api/runtime`，用于聚合 Runtime 状态与后端增强结果；前端主规划链路仍由 `agent-core.js` 负责。
 
 这意味着：
 
@@ -62,14 +63,14 @@
 对外演示和讲解时，固定采用以下口径：
 
 - V3 主链路：可稳定演示的本地 Mock 执行闭环，覆盖理解、规划、查证、确认、模拟执行和异常重排。
-- V4 alpha 能力：仓库中已经落地的可选增强链路，包括后端意图识别、反馈复盘、候选记忆、审计日志和可选 LangGraph 意图识别编排。
+- V4 alpha 能力：仓库中已经落地的可选增强链路，包括后端意图识别、反馈复盘、候选记忆、审计日志、可选 LangGraph 意图识别编排，以及薄层 Runtime 聚合端点。
 - 当前不是完整 V4 Runtime，也不是已接入真实生活服务平台；任何订座、下单、排队、买票、发消息和提醒都只做本地模拟执行。
 
 ## 下一阶段路线图
 
 下一阶段目标不是引入重型多 Agent 框架，也不是依赖任何非官方泄露源码，而是在现有基础上把可选后端能力继续收敛成更稳定的轻量 Agent Runtime。推荐目标栈为 LangGraph 轻量编排 + FastAPI + 本地 Mock 数据库 + 可配置真实 LLM，其中 LangGraph 只负责流程调度和状态流转，核心业务逻辑仍保持自研、清晰和可测试。
 
-当前已引入可选 LangGraph 作为 V4 alpha 后端轻量编排层，现阶段主要包裹 `/api/intent` 的意图识别与校验；核心业务逻辑仍由项目自研实现。LangGraph trace 只保留在后端日志或审计记录中，不映射到前端 `agentLoopTrace`。接入边界见 `LANGGRAPH_INTEGRATION.md`。
+当前已引入可选 LangGraph 作为 V4 alpha 后端轻量编排层，主要包裹意图识别与校验；`POST /api/runtime` 在此基础上提供薄层状态与后端增强结果聚合，不承载前端规划、候选生成或模拟执行。核心业务逻辑仍由项目自研实现。LangGraph trace 只保留在后端日志或审计记录中，不映射到前端 `agentLoopTrace`。接入边界见 `LANGGRAPH_INTEGRATION.md`。
 
 已经落地：
 
@@ -80,13 +81,16 @@
 - 前端 `Reflect` 阶段与反馈 UI。
 - 可选 LangGraph 意图识别编排层：`/api/intent` 在安装依赖并配置密钥后优先走 LangGraph 节点，失败或未安装时保留原后端 LLM 路径；两条成功路径都返回 `source: "llm"`，并用 `runtimePath` 区分 `langgraph` 与 `direct_llm`。
 - 最小 `/api/intent` 契约文件：`intent.schema.json` 约束请求、成功响应、错误响应和标准化 `intent` 字段。
+- 反馈与记忆契约文件：`feedback-memory.schema.json` 约束候选优先、显式确认后写入长期记忆的 alpha 行为。
+- 薄层 Runtime 契约与端点：`runtime.schema.json` 和 `POST /api/runtime` 提供状态流转与后端增强结果聚合。
+- 契约与 Runtime API 自动化测试：`test_contract_schemas.py`、`test_runtime_api.py`。
 - 后端失败时的本地规则兜底。
 
 仍待补全：
 
-- 更完整的反馈、记忆和 Runtime 状态机契约。
-- 更明确的校验器和状态机边界，而不只是前端当前的增强式接入。
-- 更完整的后端测试环境和自动化验证。
+- 将前端主规划、候选生成、重排和模拟执行收敛到完整 Runtime 状态机的后续实现。
+- 完整浏览器侧人工回归记录，以及对 LangGraph 依赖告警的后续处理。
+- 若进入产品化阶段，再评估真实生活服务接入；当前不包含真实执行平台。
 - 对“V3 主链路”和“V4 alpha 能力”的文档、讲解和演示边界持续统一。
 
 “自进化”在本项目里只表示自动总结经验、下次检索参考、降低重复错误概率，不表示自动改代码，也不承诺永不犯错。
@@ -140,7 +144,10 @@ node --check .\tests.js
 可选的 Python 语法检查：
 
 ```powershell
-python -m py_compile .\server.py .\backend_core.py .\graph_runtime.py .\test_backend_core.py .\test_graph_runtime.py
+.\.venv\Scripts\python.exe -m py_compile .\server.py .\backend_core.py .\graph_runtime.py .\test_backend_core.py .\test_graph_runtime.py .\test_contract_schemas.py .\test_runtime_api.py
+
+.\.venv\Scripts\python.exe -m unittest .\test_contract_schemas.py
+.\.venv\Scripts\pytest.exe .\test_backend_core.py .\test_graph_runtime.py .\test_runtime_api.py -q
 ```
 
 当前验证覆盖：
@@ -154,12 +161,15 @@ python -m py_compile .\server.py .\backend_core.py .\graph_runtime.py .\test_bac
 - 团购、订座、排队和人工确认动作不得伪造成成功。
 - `agentLoopTrace` 的 `understand / planner / researchers / merger / verifier / revise / reflect` 阶段。
 - LLM override、本地规则兜底、反馈生成候选记忆和高敏感信息拦截。
+- Runtime 契约状态表、反馈/记忆契约，以及薄层 `POST /api/runtime` 的可恢复失败、追问、反馈和候选决策路径。
 
 当前已确认：
 
-- `npm test` 可通过。
-- Python 后端文件可以做语法级检查。
-- `test_backend_core.py` 采用 `pytest` 风格；如果环境里未安装 `pytest`，则暂时无法执行完整后端单测。
+- `npm.cmd test` 通过，输出 `All agent-core tests passed.`。
+- Python 后端与测试文件通过语法级检查。
+- `test_contract_schemas.py` 通过，共 7 项测试。
+- `test_runtime_api.py` 通过，共 6 项测试。
+- `test_backend_core.py` 与 `test_graph_runtime.py` 通过，共 10 项测试；当前仅存在 LangGraph 依赖弃用告警，不阻塞 alpha 验证。
 
 ## 文件说明
 
@@ -167,13 +177,17 @@ python -m py_compile .\server.py .\backend_core.py .\graph_runtime.py .\test_bac
 - `styles.css`：执行驾驶舱样式。
 - `app.js`：页面交互、客户可读流程状态、追问状态、重排事件、方案选择、执行队列和反馈面板展示。
 - `agent-core.js`：自然语言解析、Mock 工具、轻量编排 trace、规划评分、服务包生成和执行模拟核心。
-- `server.py`：可选后端入口，负责静态资源挂载、意图识别和反馈复盘接口。
+- `server.py`：可选后端入口，负责静态资源挂载、意图识别、反馈复盘和薄层 Runtime 聚合接口。
 - `graph_runtime.py`：可选 LangGraph 编排层，当前只包裹后端意图识别链路，不承载复杂业务规则。
 - `backend_core.py`：后端核心逻辑，包括意图校验、结构化记忆存储和候选记忆决策。
 - `intent.schema.json`：`/api/intent` 的最小契约，约束 LangGraph 与原后端 LLM 路径共用的输出口径。
+- `feedback-memory.schema.json`：反馈与候选记忆决策的 alpha 契约。
+- `runtime.schema.json`：薄层 `POST /api/runtime` 状态流转与响应契约。
 - `tests.js`：无依赖前端核心回归测试。
 - `test_backend_core.py`：后端逻辑单测，采用 `pytest` 风格。
 - `test_graph_runtime.py`：LangGraph 编排节点的轻量单测，验证可用性状态和节点复用现有校验逻辑。
+- `test_contract_schemas.py`：契约文件与 Runtime 状态转移表测试。
+- `test_runtime_api.py`：薄层 Runtime API 行为测试。
 - `DESIGN.md`：规划策略、工具调用和 V4 alpha 结构设计说明。
 - `LANGGRAPH_INTEGRATION.md`：LangGraph 作为后端轻量编排层的接入边界说明。
 - `DEMO_SCRIPT.md`：3 分钟比赛讲解稿。

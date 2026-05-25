@@ -2,12 +2,13 @@
 
 ## 当前阶段
 
-当前项目处于“V3 比赛主链路稳定化 + V4 alpha 增强能力已部分落地”的阶段。
+当前项目处于“V3 比赛主链路稳定化 + V4 alpha 薄 Runtime 后端切片已落地”的阶段。
 
 更具体地说：
 
 - 比赛主链路仍然是本地 Mock 驱动的执行型 Web Demo。
 - 与旧文档不同，仓库里已经实际落地了可选后端增强、意图识别、反馈复盘和结构化记忆链路。
+- 后端已经实现薄层 `POST /api/runtime`，并配套提供反馈/记忆与 Runtime schema、契约测试及 API 测试。
 - 因此当前状态不能再表述为“只有纯静态前端、V4 仍完全未实现”。
 
 ## 歧义点梳理
@@ -42,7 +43,7 @@
 缺点：
 
 - 会夸大成熟度。
-- 当前已补最小 `/api/intent` 契约文件，但仍缺少完整反馈/记忆契约、完整后端测试环境和更稳定的状态机实现。
+- 当前已有 alpha 级反馈/记忆与 Runtime 契约及薄层后端实现，但仍未将前端主规划链路迁移为完整 Runtime 状态机。
 
 ### 路径 C：明确区分“V3 主链路”和“V4 alpha 已落地能力”
 
@@ -89,14 +90,17 @@
 - 前端反馈面板和 `Reflect` 阶段展示。
 - 可选 LangGraph 意图识别编排层，当前包裹 `load_lessons -> build_payload -> call_llm -> validate_intent`。
 - 最小 `/api/intent` 契约文件 `intent.schema.json`，约束请求、成功响应、错误响应和标准化 `intent` 字段。
+- 反馈与记忆契约文件 `feedback-memory.schema.json`。
+- 薄层 Runtime 契约文件 `runtime.schema.json` 及 `POST /api/runtime` 聚合端点。
+- `test_contract_schemas.py` 与 `test_runtime_api.py` 自动化测试。
 - 后端不可用时自动回退本地规则解析。
 
 ## 当前未完成
 
-- 还没有完整反馈、记忆和 Runtime 状态机契约；当前只补齐了 `/api/intent` 的最小契约。
-- 还没有把前端当前的增强式接入完全收敛成完整状态机式 Runtime；当前 LangGraph 只覆盖后端意图识别链路。
-- 还没有完整跑通后端自动化单测环境。
+- 还没有把前端当前的规划、候选生成、重排与模拟执行迁移为完整状态机式 Runtime；当前薄端点聚合后端增强结果，LangGraph 仍主要覆盖意图识别链路。
+- 还没有接入真实生活服务执行平台；订座、下单、排队、买票、发消息和提醒仍只做 Mock。
 - 还没有做浏览器侧完整人工回归记录。
+- LangGraph 依赖当前存在非阻塞的弃用告警，后续升级或配置时需要消除。
 
 ## 2026-05-18 LangGraph 轻量接入
 
@@ -126,7 +130,7 @@
 风险边界：
 
 - 本次没有改变意图识别算法、prompt、校验器枚举或前端规划主链路。
-- 本次契约只覆盖 `/api/intent`，不代表反馈、记忆和完整 Runtime 契约已经完成。
+- 截至该步骤，契约只覆盖 `/api/intent`；后续薄 Runtime 切片已经补入反馈/记忆和 Runtime alpha 契约，但仍不代表完整产品级 Runtime 已完成。
 
 风险边界：
 
@@ -189,53 +193,63 @@ LangGraph + FastAPI + 本地 Mock 数据库 + 真实 LLM
 
 后续实现时应把地点和工具结果显式区分为 `seed_poi`、`llm_poi_candidate`、`mock_search_result`、`mock_realtime_field`、`mock_execution` 等类似语义，避免 UI 或讲解把 Mock API 字段误说成真实实时 API。
 
+## 2026-05-25 状态口径校准
+
+目标：消除 README、进度记录与 Spec Kit 工件对薄 Runtime 实现状态的互相矛盾，固定“V3 Mock 主链路 + V4 alpha 薄 Runtime 后端切片”的当前口径。
+
+已确认事实：
+
+- `POST /api/runtime` 已实现，用于 Runtime 状态与后端增强结果聚合；前端规划仍由 `agent-core.js` 负责。
+- `feedback-memory.schema.json` 与 `runtime.schema.json` 已存在，分别覆盖反馈/候选记忆和薄 Runtime alpha 契约。
+- `test_contract_schemas.py` 与 `test_runtime_api.py` 已存在并可通过验证。
+- 这组能力是兼容性增量，不改变“外部执行动作全部 Mock”的产品边界，也不表示完整 V4 Runtime 已完成。
+
 ## 已执行验证
 
 已执行：
 
 ```powershell
-npm test
-python -m py_compile .\server.py .\backend_core.py .\test_backend_core.py
+npm.cmd test
+.\.venv\Scripts\python.exe -m py_compile .\server.py .\backend_core.py .\graph_runtime.py .\test_backend_core.py .\test_graph_runtime.py .\test_contract_schemas.py .\test_runtime_api.py
+.\.venv\Scripts\python.exe -m unittest .\test_contract_schemas.py
+.\.venv\Scripts\pytest.exe .\test_backend_core.py .\test_graph_runtime.py .\test_runtime_api.py -q
+.\.venv\Scripts\specify.exe check
 ```
 
 结果：
 
-- `npm test` 通过，输出 `All agent-core tests passed.`。
-- Python 后端相关文件通过语法级检查。
+- `npm.cmd test` 通过，输出 `All agent-core tests passed.`。
+- Python 后端与测试文件通过语法级检查。
+- 契约测试通过，共 7 项。
+- Runtime API 测试通过，共 6 项。
+- 后端核心与 LangGraph 测试通过，共 10 项。
+- Spec Kit `0.8.7` 自检通过。
+- pytest 运行期间出现 LangGraph 依赖的弃用告警，当前不影响测试通过，但应作为后续依赖治理事项保留。
 
-未完成验证：
-
-- `pytest test_backend_core.py`
-
-未完成原因：
-
-- 当前环境缺少 `pytest`，执行时返回 `No module named pytest`。
-
-## 本次文档更新
+## 2026-05-25 本轮文档更新
 
 已更新：
 
 - `README.md`
 - `progress.md`
-- `DESIGN.md`
-- `COMPETITION_BRIEF.md`
-- `DEMO_SCRIPT.md`
-- `lessons.md`
+- `specs/001-v4-runtime-state-machine-memory-loop/spec.md`
+- `specs/001-v4-runtime-state-machine-memory-loop/plan.md`
+- `specs/001-v4-runtime-state-machine-memory-loop/tasks.md`
+- `specs/001-v4-runtime-state-machine-memory-loop/analysis.md`
 
 更新目标：
 
-- 统一“比赛主链路”和“增强能力”的口径。
-- 修正“V4 尚未实现任何代码”的过时说法。
-- 去掉公开文档中的品牌化名称。
-- 弱化过深的内部实现暴露。
-- 明确“真实地点名”和“执行动作 Mock”的边界，避免把实时 API 能力讲过头。
+- 将当前口径统一为“V3 Mock 主链路 + V4 alpha 薄 Runtime 后端切片已落地”。
+- 记录薄层 `POST /api/runtime`、alpha 契约及已通过测试，消除“仅文档阶段”的过时表述。
+- 保持“外部执行动作全部 Mock”及“当前不是完整生产级 Runtime”的边界。
 
 ## 剩余风险
 
 - 对外讲解时如果只说“有后端增强、意图识别、记忆闭环”，仍可能让人误解为已经接入真实生活服务平台。
 - 对外讲解时如果继续说“完全没有后端”，又会和仓库代码事实冲突。
-- 后端测试目前只做了语法检查，功能级验证还不完整。
+- 当前自动化验证已覆盖后端与薄 Runtime API，但尚缺完整浏览器人工回归证据。
 - 当前实现仍然以 Mock 业务闭环为主，不应夸大为成熟的线上可用 Agent Runtime。
+- LangGraph 依赖弃用告警尚未处理，后续升级依赖时存在小幅维护风险。
 
 ## 公开历史评估
 
@@ -246,7 +260,7 @@ python -m py_compile .\server.py .\backend_core.py .\test_backend_core.py
 ## 下一步建议
 
 1. 如果目标是比赛交付，继续把讲解口径固定为“Mock 主链路 + 可选增强后端”，避免叙事漂移。
-2. 如果目标是继续做 V4，优先补反馈/记忆契约说明和 `pytest` 环境。
+2. 如果目标是继续做 V4，优先规划前端主规划链路向完整 Runtime 状态机的迁移边界，并处理 LangGraph 告警。
 3. 如果目标是提升公开仓库可信度，补一次浏览器人工回归，并评估是否要处理公开历史。
 
 ## Done When

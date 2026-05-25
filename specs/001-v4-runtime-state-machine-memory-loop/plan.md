@@ -6,8 +6,10 @@
 ## Summary
 
 Create a Spec Kit-governed productization slice for the V4 runtime state machine
-and consent-based memory loop. This phase produces contracts, data model, and
-implementation tasks only; it does not change runtime behavior or API wire shapes.
+and consent-based memory loop. The delivered alpha slice includes contracts, data
+model, validation, and a compatible optional `POST /api/runtime` backend endpoint
+that aggregates Runtime state and backend enhancement results. Frontend planning
+and Mock execution behavior remain unchanged.
 
 ## Technical Context
 
@@ -17,19 +19,19 @@ implementation tasks only; it does not change runtime behavior or API wire shape
 **Testing**: `npm test`, Python compile checks, pytest when available  
 **Target Platform**: Local Windows development and browser demo  
 **Project Type**: Static Web Demo with optional local API backend  
-**Performance Goals**: Preserve current local demo responsiveness; no new runtime overhead in this documentation phase  
-**Constraints**: No business-code behavior change; no endpoint shape change; no real platform execution  
-**Scale/Scope**: One maintainer, high-risk V4 governance for runtime and memory loop only
+**Performance Goals**: Preserve current local demo responsiveness; keep the optional thin Runtime endpoint lightweight
+**Constraints**: Preserve existing endpoint semantics and frontend planning ownership; no real platform execution
+**Scale/Scope**: One maintainer, high-risk V4 governance and compatible thin Runtime backend slice only
 
 ## Constitution Check
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-- Stable Demo Path: PASS. The phase does not alter static demo behavior or make the backend required.
+- Stable Demo Path: PASS. The optional endpoint does not alter static demo behavior or make the backend required.
 - Spec Gate for V4 Risk: PASS. Runtime and memory work now has spec, plan, contracts, and tasks.
 - Mock Boundary Honesty: PASS. Contracts explicitly keep execution actions Mock.
 - Memory Privacy and Consent: PASS. Candidate review and L2/L3 blocking are required.
-- Verified, Reversible Changes: PASS. This phase is documentation/configuration only and preserves business code.
+- Verified, Reversible Changes: PASS. The thin backend addition is covered by schema and API tests and leaves frontend planning intact.
 
 ## Project Structure
 
@@ -62,11 +64,14 @@ graph_runtime.py       # current optional LangGraph intent wrapper
 tests.js               # current front-end regression tests
 test_backend_core.py   # current backend memory/intent tests
 test_graph_runtime.py  # current optional graph runtime tests
+test_contract_schemas.py # current contract and transition-table tests
+test_runtime_api.py    # current thin Runtime endpoint tests
 ```
 
 **Structure Decision**: Keep the existing single-repository layout. This feature
-adds Spec Kit artifacts only; future implementation tasks may edit the files above
-but are not executed in this phase.
+adds Spec Kit artifacts plus an optional thin backend Runtime endpoint in
+`server.py`. Any future migration of frontend planning, replanning, or Mock
+execution requires a separate scoped implementation phase.
 
 ## Complexity Tracking
 

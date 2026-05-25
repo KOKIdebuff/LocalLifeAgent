@@ -108,7 +108,7 @@
 ## Phase 7: Contract Schema Completion
 
 **Purpose**: Make feedback, memory, and runtime contracts machine-checkable before
-future implementation.
+the thin Runtime backend slice and later full-runtime work.
 
 - [x] T028 Add feedback and memory schema in `feedback-memory.schema.json`
 - [x] T029 Add future runtime state machine schema in `runtime.schema.json`
@@ -132,6 +132,17 @@ results while keeping planning in `agent-core.js`.
 
 ---
 
+## Phase 9: Current-State Documentation Synchronization
+
+**Purpose**: Align public and Spec Kit status reporting with the completed alpha
+slice without overstating full Runtime maturity.
+
+- [x] T039 Update `README.md` and `progress.md` to record the thin Runtime endpoint, alpha schemas, and current validation evidence
+- [x] T040 Update `spec.md`, `plan.md`, and `analysis.md` to remove governance-only statements superseded by Phase 8
+- [x] T041 Confirm `tasks.md` distinguishes completed thin Runtime work from future frontend Runtime migration
+
+---
+
 ## Dependencies & Execution Order
 
 - Phase 1 must finish before all other phases.
@@ -142,7 +153,7 @@ results while keeping planning in `agent-core.js`.
 
 ## Implementation Strategy
 
-This task list intentionally stops before runtime implementation. The next phase
-should create a new implementation task set from these artifacts and only then
-modify `agent-core.js`, `app.js`, `server.py`, `backend_core.py`, or
-`graph_runtime.py`.
+This task list records the completed contract work and compatible thin backend
+Runtime slice. Future work must create a new implementation task set before
+migrating frontend planning, candidate generation, replanning, or Mock execution
+from `agent-core.js` / `app.js` into a fuller Runtime state machine.
