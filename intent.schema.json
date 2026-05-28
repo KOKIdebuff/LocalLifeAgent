@@ -83,7 +83,8 @@
           "enum": [
             "missing_api_key",
             "langgraph_llm_error",
-            "llm_error"
+            "llm_error",
+            "sqlite_unavailable"
           ]
         },
         "runtimePath": {

@@ -1,12 +1,14 @@
 import os
+import sqlite3
 from datetime import datetime, timezone
 from uuid import uuid4
 
 import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from backend_core import (
     build_chat_payload,
@@ -24,7 +26,10 @@ from graph_runtime import graph_runtime_status, run_intent_graph
 
 app = FastAPI(title="Local Life Agent V4 API")
 settings = get_settings()
-init_db(settings["db_path"])
+try:
+    init_db(settings["db_path"])
+except sqlite3.Error:
+    pass
 
 app.add_middleware(
     CORSMiddleware,
@@ -48,8 +53,28 @@ class FeedbackRequest(BaseModel):
 
 
 class CandidateDecisionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     action: str = Field(pattern="^(adopt|ignore|correct)$")
     correctedValue: str | None = Field(default=None, max_length=1000)
+
+    @model_validator(mode="after")
+    def require_correction_value(self):
+        if self.action == "correct" and not (self.correctedValue and self.correctedValue.strip()):
+            raise ValueError("correctedValue is required when action is correct")
+        return self
+
+
+class RuntimeFeedbackRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    llmIntent: dict | None = None
+    userCorrection: str | None = Field(default=None, max_length=1000)
+    failureType: str | None = Field(default="general", max_length=80)
+
+
+class RuntimeMemoryDecisionRequest(CandidateDecisionRequest):
+    candidateId: int = Field(gt=0)
 
 
 class RuntimeRequest(BaseModel):
@@ -57,8 +82,8 @@ class RuntimeRequest(BaseModel):
     input: str = Field(min_length=1, max_length=1000)
     overrides: dict = Field(default_factory=dict)
     event: dict | None = None
-    feedback: dict | None = None
-    memoryDecision: dict | None = None
+    feedback: RuntimeFeedbackRequest | None = None
+    memoryDecision: RuntimeMemoryDecisionRequest | None = None
 
 
 RUNTIME_TRANSITIONS = {
@@ -71,8 +96,8 @@ RUNTIME_TRANSITIONS = {
     "replanning": ["verifying_plan"],
     "ready_for_confirmation": ["executing_mock_actions", "feedback_capture"],
     "executing_mock_actions": ["feedback_capture"],
-    "feedback_capture": ["memory_candidate_review", "done"],
-    "memory_candidate_review": ["memory_committed", "done"],
+    "feedback_capture": ["feedback_capture", "memory_candidate_review", "done"],
+    "memory_candidate_review": ["memory_candidate_review", "memory_committed", "done"],
     "memory_committed": ["done"],
     "failed_recoverable": ["planning_local"],
     "done": [],
@@ -138,20 +163,39 @@ def intent_needs_clarification(intent):
     return bool(intent and intent.get("missingFields"))
 
 
+def storage_error_payload():
+    return {"ok": False, "error": "storage_unavailable", "recoverable": True}
+
+
+def storage_intent_error():
+    return intent_error_response("sqlite_unavailable", "storage_unavailable", [])
+
+
 async def resolve_intent_response(input_text, overrides, current):
     if not current["api_key"]:
-        lessons = load_relevant_lessons(input_text, current["db_path"])
+        try:
+            lessons = load_relevant_lessons(input_text, current["db_path"])
+        except sqlite3.Error:
+            return storage_intent_error()
         return intent_error_response("missing_api_key", "OPENAI_API_KEY is not configured.", lessons)
 
     try:
         return await run_intent_graph(input_text, overrides, current)
+    except sqlite3.Error:
+        return storage_intent_error()
     except RuntimeError:
         pass
     except Exception as exc:
-        lessons = load_relevant_lessons(input_text, current["db_path"])
+        try:
+            lessons = load_relevant_lessons(input_text, current["db_path"])
+        except sqlite3.Error:
+            return storage_intent_error()
         return intent_error_response("langgraph_llm_error", str(exc), lessons, "langgraph")
 
-    lessons = load_relevant_lessons(input_text, current["db_path"])
+    try:
+        lessons = load_relevant_lessons(input_text, current["db_path"])
+    except sqlite3.Error:
+        return storage_intent_error()
     payload = build_chat_payload(input_text, overrides, lessons, current["model"])
     headers = {
         "Authorization": "Bearer " + current["api_key"],
@@ -204,12 +248,32 @@ async def runtime(request: RuntimeRequest):
 
     if request.memoryDecision:
         decision = request.memoryDecision
-        result = decide_memory_candidate(
-            decision.get("candidateId"),
-            decision.get("action"),
-            decision.get("correctedValue"),
-            current["db_path"],
-        )
+        try:
+            result = decide_memory_candidate(
+                decision.candidateId,
+                decision.action,
+                decision.correctedValue,
+                current["db_path"],
+            )
+        except sqlite3.Error:
+            events = [
+                runtime_event(
+                    "operation_recoverable_failure",
+                    "memory_candidate_review",
+                    "memory_candidate_review",
+                    "storage_unavailable",
+                )
+            ]
+            return runtime_response(
+                request,
+                False,
+                "operation_recoverable_failure",
+                "memory_candidate_review",
+                events,
+                ["memory_candidate_review"],
+                error="storage_unavailable",
+                operation="memory_decision",
+            )
         if result.get("status") == "adopted":
             events = [runtime_event("memory_committed", "memory_candidate_review", "memory_committed")]
             return runtime_response(
@@ -221,21 +285,56 @@ async def runtime(request: RuntimeRequest):
                 memoryId=result.get("memoryId"),
                 memoryDecisionResult=result,
             )
-        events = [runtime_event("memory_ignored", "memory_candidate_review", "done")]
+        if result.get("status") == "ignored":
+            events = [runtime_event("memory_ignored", "memory_candidate_review", "done")]
+            return runtime_response(
+                request,
+                True,
+                "memory_ignored",
+                "done",
+                events,
+                memoryId=None,
+                memoryDecisionResult=result,
+            )
+        error = result.get("error") or "memory_decision_failed"
+        events = [runtime_event("memory_decision_rejected", "memory_candidate_review", "memory_candidate_review", error)]
+        resolution = "retry_correction" if error == "sensitive_correction_blocked" else "refresh_candidate"
         return runtime_response(
             request,
-            bool(result.get("ok")),
-            "memory_ignored" if result.get("ok") else "memory_decision_failed",
-            "done",
+            False,
+            "memory_decision_rejected",
+            "memory_candidate_review",
             events,
-            memoryId=None,
+            ["memory_candidate_review", "done"],
+            error=error,
+            resolution=resolution,
             memoryDecisionResult=result,
         )
 
     if request.feedback:
-        payload = dict(request.feedback)
-        payload.setdefault("input", request.input)
-        result = save_feedback(payload, current["db_path"])
+        payload = request.feedback.model_dump()
+        payload["input"] = request.input
+        try:
+            result = save_feedback(payload, current["db_path"])
+        except sqlite3.Error:
+            events = [
+                runtime_event(
+                    "operation_recoverable_failure",
+                    "feedback_capture",
+                    "feedback_capture",
+                    "storage_unavailable",
+                )
+            ]
+            return runtime_response(
+                request,
+                False,
+                "operation_recoverable_failure",
+                "feedback_capture",
+                events,
+                ["feedback_capture"],
+                error="storage_unavailable",
+                operation="feedback",
+            )
         next_states = ["memory_candidate_review"] if result.get("candidate") else ["done"]
         events = [runtime_event("feedback_captured", "ready_for_confirmation", "feedback_capture")]
         if result.get("candidate"):
@@ -295,13 +394,19 @@ async def runtime(request: RuntimeRequest):
 @app.post("/api/feedback")
 def feedback(request: FeedbackRequest):
     current = get_settings()
-    return save_feedback(request.model_dump(), current["db_path"])
+    try:
+        return save_feedback(request.model_dump(), current["db_path"])
+    except sqlite3.Error:
+        return JSONResponse(status_code=503, content=storage_error_payload())
 
 
 @app.post("/api/memory-candidates/{candidate_id}/decision")
 def memory_candidate_decision(candidate_id: int, request: CandidateDecisionRequest):
     current = get_settings()
-    return decide_memory_candidate(candidate_id, request.action, request.correctedValue, current["db_path"])
+    try:
+        return decide_memory_candidate(candidate_id, request.action, request.correctedValue, current["db_path"])
+    except sqlite3.Error:
+        return JSONResponse(status_code=503, content=storage_error_payload())
 
 
 if os.environ.get("SERVE_STATIC", "1") != "0":

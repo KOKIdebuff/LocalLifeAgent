@@ -1,10 +1,17 @@
+import json
 import tempfile
+import sqlite3
 from pathlib import Path
 
+import pytest
+
+import backend_core
 from backend_core import (
     build_chat_payload,
+    classify_sensitivity,
     decide_memory_candidate,
     extract_json_object,
+    get_memory_candidate,
     init_db,
     load_relevant_lessons,
     save_feedback,
@@ -86,6 +93,230 @@ def test_high_sensitive_feedback_does_not_create_candidate():
         )
         assert result["ok"] is True
         assert result["candidate"] is None
+
+
+@pytest.mark.parametrize(
+    ("corrected_value", "expected_level"),
+    [
+        ("我的手机号是 13800000000", "L2"),
+        ("我的银行卡是 6222020000000000", "L2"),
+        ("我的支付密码是 123456", "L3"),
+    ],
+)
+def test_sensitive_candidate_correction_is_rejected_and_keeps_candidate_pending(corrected_value, expected_level):
+    with temp_dir() as tmp:
+        db_path = Path(tmp) / "agent_memory.sqlite"
+        feedback = save_feedback(
+            {
+                "input": "周末想轻松玩",
+                "userCorrection": "不要安排太赶，优先轻松一点",
+                "failureType": "user_correction",
+            },
+            db_path,
+        )
+
+        result = decide_memory_candidate(feedback["candidate"]["id"], "correct", corrected_value, db_path)
+
+        assert result["ok"] is False
+        assert result["error"] == "sensitive_correction_blocked"
+        assert result["sensitivityLevel"] == expected_level
+        assert result["candidateId"] == feedback["candidate"]["id"]
+        assert result["candidateStatus"] == "pending"
+        assert "candidate" not in result
+        assert get_memory_candidate(feedback["candidate"]["id"], db_path)["status"] == "pending"
+        conn = sqlite3.connect(db_path)
+        try:
+            assert conn.execute("SELECT COUNT(*) FROM memories").fetchone()[0] == 0
+        finally:
+            conn.close()
+
+
+def test_safe_candidate_correction_rebuilds_candidate_and_memory_consistently():
+    with temp_dir() as tmp:
+        db_path = Path(tmp) / "agent_memory.sqlite"
+        feedback = save_feedback(
+            {
+                "input": "周末想轻松玩",
+                "userCorrection": "不要安排太赶，优先轻松一点",
+                "failureType": "user_correction",
+            },
+            db_path,
+        )
+
+        result = decide_memory_candidate(feedback["candidate"]["id"], "correct", "以后优先地铁，少换乘", db_path)
+        candidate = get_memory_candidate(feedback["candidate"]["id"], db_path)
+
+        assert result["ok"] is True
+        assert result["status"] == "adopted"
+        assert candidate["status"] == "adopted"
+        assert candidate["key"] == "transport"
+        assert candidate["key"] == result["memory"]["key"]
+        assert candidate["value"] == result["memory"]["value"]
+        assert candidate["sensitivityLevel"] == result["memory"]["sensitivityLevel"]
+
+
+def test_blank_candidate_correction_is_rejected_without_state_change():
+    with temp_dir() as tmp:
+        db_path = Path(tmp) / "agent_memory.sqlite"
+        feedback = save_feedback(
+            {
+                "input": "周末想轻松玩",
+                "userCorrection": "不要安排太赶，优先轻松一点",
+                "failureType": "user_correction",
+            },
+            db_path,
+        )
+
+        result = decide_memory_candidate(feedback["candidate"]["id"], "correct", "  ", db_path)
+
+        assert result["ok"] is False
+        assert result["error"] == "correction_required"
+        assert result["candidateStatus"] == "pending"
+        assert "candidate" not in result
+        assert get_memory_candidate(feedback["candidate"]["id"], db_path)["status"] == "pending"
+
+
+def test_adopt_rechecks_legacy_sensitive_candidate_before_long_term_write():
+    with temp_dir() as tmp:
+        db_path = Path(tmp) / "agent_memory.sqlite"
+        feedback = save_feedback(
+            {
+                "input": "周末想轻松玩",
+                "userCorrection": "不要安排太赶，优先轻松一点",
+                "failureType": "user_correction",
+            },
+            db_path,
+        )
+        candidate_id = feedback["candidate"]["id"]
+        conn = sqlite3.connect(db_path)
+        try:
+            conn.execute(
+                "UPDATE memory_candidates SET value = ?, evidence_json = ?, sensitivity_level = ? WHERE id = ?",
+                ("我的支付密码是 123456", json.dumps(["我的支付密码是 123456"], ensure_ascii=False), "L0", candidate_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        result = decide_memory_candidate(candidate_id, "adopt", db_path=db_path)
+
+        assert result["ok"] is False
+        assert result["error"] == "sensitive_candidate_blocked"
+        assert result["sensitivityLevel"] == "L3"
+        assert "candidate" not in result
+        assert get_memory_candidate(candidate_id, db_path)["status"] == "pending"
+
+
+@pytest.mark.parametrize(
+    "corrected_value",
+    [
+        "reach me at 13800000000",
+        "以后订位使用美团授权码 AUTH-ZX9Q",
+        "use access_token abc123 for booking",
+    ],
+)
+def test_long_term_memory_gate_blocks_unlabeled_contact_and_authorization_data(corrected_value):
+    with temp_dir() as tmp:
+        db_path = Path(tmp) / "agent_memory.sqlite"
+        feedback = save_feedback(
+            {
+                "input": "周末想轻松玩",
+                "userCorrection": "不要安排太赶，优先轻松一点",
+                "failureType": "user_correction",
+            },
+            db_path,
+        )
+
+        result = decide_memory_candidate(feedback["candidate"]["id"], "correct", corrected_value, db_path)
+        result_text = json.dumps(result, ensure_ascii=False)
+
+        assert result["ok"] is False
+        assert result["error"] == "sensitive_correction_blocked"
+        assert result["candidateStatus"] == "pending"
+        assert "candidate" not in result
+        assert corrected_value not in result_text
+        conn = sqlite3.connect(db_path)
+        try:
+            assert conn.execute("SELECT COUNT(*) FROM memories").fetchone()[0] == 0
+        finally:
+            conn.close()
+
+
+def test_adopt_rechecks_all_legacy_candidate_fields_before_long_term_write():
+    with temp_dir() as tmp:
+        db_path = Path(tmp) / "agent_memory.sqlite"
+        feedback = save_feedback(
+            {
+                "input": "周末想轻松玩",
+                "userCorrection": "不要安排太赶，优先轻松一点",
+                "failureType": "user_correction",
+            },
+            db_path,
+        )
+        candidate_id = feedback["candidate"]["id"]
+        conn = sqlite3.connect(db_path)
+        try:
+            conn.execute(
+                "UPDATE memory_candidates SET key = ?, scope = ?, value = ?, evidence_json = ?, sensitivity_level = ? WHERE id = ?",
+                (
+                    "支付密码=123456",
+                    "global",
+                    "用户偏好：轻松安排",
+                    json.dumps(["用户偏好：轻松安排"], ensure_ascii=False),
+                    "L0",
+                    candidate_id,
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        result = decide_memory_candidate(candidate_id, "adopt", db_path=db_path)
+
+        assert result["ok"] is False
+        assert result["error"] == "sensitive_candidate_blocked"
+        assert result["candidateStatus"] == "pending"
+        assert "candidate" not in result
+        conn = sqlite3.connect(db_path)
+        try:
+            assert conn.execute("SELECT COUNT(*) FROM memories").fetchone()[0] == 0
+        finally:
+            conn.close()
+
+
+def test_audit_failure_does_not_override_committed_feedback_or_decision(monkeypatch):
+    with temp_dir() as tmp:
+        db_path = Path(tmp) / "agent_memory.sqlite"
+
+        def fail_audit(_event):
+            raise OSError("audit unavailable")
+
+        monkeypatch.setattr(backend_core, "_append_audit", fail_audit)
+
+        feedback = save_feedback(
+            {
+                "input": "周末想轻松玩",
+                "userCorrection": "不要安排太赶，优先轻松一点",
+                "failureType": "user_correction",
+            },
+            db_path,
+        )
+        decision = decide_memory_candidate(feedback["candidate"]["id"], "adopt", db_path=db_path)
+
+        assert feedback["ok"] is True
+        assert decision["ok"] is True
+        conn = sqlite3.connect(db_path)
+        try:
+            assert conn.execute("SELECT COUNT(*) FROM feedback_events").fetchone()[0] == 1
+            assert conn.execute("SELECT COUNT(*) FROM memories").fetchone()[0] == 1
+        finally:
+            conn.close()
+
+
+def test_payment_password_has_highest_sensitivity_level():
+    assert classify_sensitivity("我的支付密码是 123456") == "L3"
+    assert classify_sensitivity("reach me at 13800000000") == "L2"
+    assert classify_sensitivity("以后订位使用美团授权码 AUTH-ZX9Q") == "L2"
 
 
 def test_build_chat_payload_includes_lessons():

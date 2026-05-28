@@ -268,6 +268,55 @@ npm.cmd test
 2. 如果目标是继续做 V4，优先规划前端主规划链路向完整 Runtime 状态机的迁移边界，并处理 LangGraph 告警。
 3. 如果目标是提升公开仓库可信度，补一次浏览器人工回归，并评估是否要处理公开历史。
 
+## 2026-05-27 V4 alpha Runtime 安全与降级契约加固
+
+目标：在新 UI 接入前，先稳定候选记忆隐私边界、失败状态语义与 SQLite 故障降级路径。
+
+已实现：
+
+- 候选记忆执行 `correct` 时重新分类与结构化；L2/L3 更正拒绝写入，候选保持 `pending` 可重试；`adopt` 也会防御性复核历史或异常候选。
+- 敏感等级判断调整为优先识别 L3，避免“支付密码”等内容被宽泛支付规则低估。
+- Runtime 的嵌套 `feedback` 与 `memoryDecision` 采用结构化输入；非法 action 或空白更正返回校验错误，不再伪造 `memory_ignored -> done`。
+- SQLite 在意图/记忆读取失败时仍允许本地规划回退；在反馈或候选确认失败时返回操作可恢复状态并保留当前步骤。
+- `/api/feedback` 与候选 decision 的存储故障返回 HTTP 503；健康检查在数据库不可用时仍可返回不可用状态。
+- 已明确长期记忆只保存偏好与复盘经验；未来第三方平台授权所需隐私资料必须另设用途受限通道。
+
+验证记录：
+
+```powershell
+.\.venv\Scripts\python.exe -m py_compile .\server.py .\backend_core.py .\graph_runtime.py .\test_backend_core.py .\test_graph_runtime.py .\test_contract_schemas.py .\test_runtime_api.py
+.\.venv\Scripts\python.exe -m unittest .\test_contract_schemas.py
+.\.venv\Scripts\python.exe -m pytest .\test_backend_core.py .\test_graph_runtime.py .\test_runtime_api.py -q
+npm.cmd test
+node --check .\agent-core.js; node --check .\app.js; node --check .\tests.js
+.\.venv\Scripts\specify.exe check
+```
+
+阶段结果：前端回归、JavaScript 语法检查与 Spec Kit 自检通过；契约 unittest `9` 项通过，pytest `33` 项通过；仍保留既有 LangGraph 依赖弃用警告，未纳入本轮修复范围。
+
+## 2026-05-28 V4 alpha Runtime 记忆安全二次加固
+
+目标：根据独立只读审查结果，修复长期记忆准入绕过、敏感拒绝响应回显和 audit 提交后失败误重试问题。
+
+已实现：
+
+- 新增统一长期记忆准入层，`adopt` / `correct` 在写入 `memories` 前统一校验最终落库和索引字段，包括 `type`、`key`、`value`、`evidence`、`scope`、`source` 和派生 `search_text`。
+- 扩展敏感识别，阻断裸手机号、长数字凭据、授权码、token、API key、secret、credential 等进入长期记忆。
+- 收紧候选决策错误响应，敏感拒绝、空白更正和已决策候选不再返回完整 `candidate.value` / `candidate.evidence`。
+- 将 audit JSONL 定义为 best-effort 非阻断日志；audit 写失败不再覆盖已经成功提交的 SQLite 主操作。
+- 同步更新 `feedback-memory.schema.json`、`runtime.schema.json`、Runtime 契约、spec 和 readiness checklist，并补充 direct / runtime API 回归测试。
+
+验证记录：
+
+```powershell
+.\.venv\Scripts\python.exe -m py_compile .\server.py .\backend_core.py .\test_backend_core.py .\test_runtime_api.py .\test_contract_schemas.py
+.\.venv\Scripts\python.exe -m pytest .\test_backend_core.py .\test_runtime_api.py .\test_contract_schemas.py -q
+npm.cmd test
+git diff --check HEAD
+```
+
+阶段结果：Python 编译通过；pytest `46` 项通过，仍只有既有 LangGraph 依赖弃用告警；前端 `agent-core` 回归通过；`git diff --check HEAD` 通过，仅保留 Windows LF/CRLF 提示。
+
 ## Done When
 
 - `README.md`、`progress.md`、`COMPETITION_BRIEF.md`、`DESIGN.md` 对当前状态的表述一致。

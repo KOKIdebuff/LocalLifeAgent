@@ -55,20 +55,106 @@
           ]
         },
         "feedback": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/RuntimeFeedbackRequest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "memoryDecision": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/RuntimeMemoryDecisionRequest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "RuntimeFeedbackRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "llmIntent": {
           "type": [
             "object",
             "null"
           ],
           "additionalProperties": true
         },
-        "memoryDecision": {
+        "userCorrection": {
           "type": [
-            "object",
+            "string",
             "null"
           ],
-          "additionalProperties": true
+          "maxLength": 1000
+        },
+        "failureType": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 80,
+          "default": "general"
         }
       }
+    },
+    "RuntimeMemoryDecisionRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidateId",
+        "action"
+      ],
+      "properties": {
+        "candidateId": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "action": {
+          "enum": [
+            "adopt",
+            "ignore",
+            "correct"
+          ]
+        },
+        "correctedValue": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 1000
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "correct"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "correctedValue"
+            ],
+            "properties": {
+              "correctedValue": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S",
+                "maxLength": 1000
+              }
+            }
+          }
+        }
+      ]
     },
     "RuntimeResponse": {
       "oneOf": [
@@ -89,6 +175,12 @@
         },
         {
           "$ref": "#/$defs/RuntimeMemoryIgnoredResponse"
+        },
+        {
+          "$ref": "#/$defs/RuntimeMemoryDecisionRejectedResponse"
+        },
+        {
+          "$ref": "#/$defs/RuntimeOperationRecoverableFailureResponse"
         }
       ]
     },
@@ -347,6 +439,196 @@
         }
       }
     },
+    "RuntimeMemoryDecisionRejectedResponse": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "ok",
+        "status",
+        "session",
+        "currentState",
+        "allowedNextStates",
+        "error",
+        "resolution",
+        "memoryDecisionResult"
+      ],
+      "properties": {
+        "ok": {
+          "const": false
+        },
+        "status": {
+          "const": "memory_decision_rejected"
+        },
+        "session": {
+          "$ref": "#/$defs/RuntimeSession"
+        },
+        "currentState": {
+          "const": "memory_candidate_review"
+        },
+        "allowedNextStates": {
+          "prefixItems": [
+            {
+              "const": "memory_candidate_review"
+            },
+            {
+              "const": "done"
+            }
+          ],
+          "items": false
+        },
+        "error": {
+          "enum": [
+            "sensitive_correction_blocked",
+            "sensitive_candidate_blocked",
+            "candidate_not_found",
+            "candidate_already_decided",
+            "memory_decision_failed"
+          ]
+        },
+        "resolution": {
+          "enum": [
+            "retry_correction",
+            "refresh_candidate"
+          ]
+        },
+        "memoryDecisionResult": {
+          "$ref": "#/$defs/RuntimeMemoryDecisionErrorResult"
+        }
+      }
+    },
+    "RuntimeMemoryDecisionErrorResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ok",
+        "error"
+      ],
+      "properties": {
+        "ok": {
+          "const": false
+        },
+        "error": {
+          "enum": [
+            "sensitive_correction_blocked",
+            "sensitive_candidate_blocked",
+            "candidate_not_found",
+            "candidate_already_decided",
+            "memory_decision_failed"
+          ]
+        },
+        "candidateId": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "candidateStatus": {
+          "enum": [
+            "pending",
+            "adopted",
+            "ignored"
+          ]
+        },
+        "sensitivityLevel": {
+          "enum": [
+            "L0",
+            "L1",
+            "L2",
+            "L3"
+          ]
+        }
+      }
+    },
+    "RuntimeOperationRecoverableFailureResponse": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "ok",
+        "status",
+        "session",
+        "currentState",
+        "allowedNextStates",
+        "error",
+        "operation"
+      ],
+      "properties": {
+        "ok": {
+          "const": false
+        },
+        "status": {
+          "const": "operation_recoverable_failure"
+        },
+        "session": {
+          "$ref": "#/$defs/RuntimeSession"
+        },
+        "currentState": {
+          "enum": [
+            "feedback_capture",
+            "memory_candidate_review"
+          ]
+        },
+        "allowedNextStates": {
+          "$ref": "#/$defs/RuntimeStateList"
+        },
+        "error": {
+          "const": "storage_unavailable"
+        },
+        "operation": {
+          "enum": [
+            "feedback",
+            "memory_decision"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "const": "feedback"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "currentState": {
+                "const": "feedback_capture"
+              },
+              "allowedNextStates": {
+                "prefixItems": [
+                  {
+                    "const": "feedback_capture"
+                  }
+                ],
+                "items": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "const": "memory_decision"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "currentState": {
+                "const": "memory_candidate_review"
+              },
+              "allowedNextStates": {
+                "prefixItems": [
+                  {
+                    "const": "memory_candidate_review"
+                  }
+                ],
+                "items": false
+              }
+            }
+          }
+        }
+      ]
+    },
     "RuntimeSession": {
       "type": "object",
       "additionalProperties": false,
@@ -428,6 +710,8 @@
             "memory_candidate_created",
             "memory_ignored",
             "memory_committed",
+            "memory_decision_rejected",
+            "operation_recoverable_failure",
             "recoverable_failure",
             "session_done"
           ]
@@ -507,6 +791,8 @@
         "memory_candidate_created",
         "memory_ignored",
         "memory_committed",
+        "memory_decision_rejected",
+        "operation_recoverable_failure",
         "recoverable_failure",
         "session_done"
       ]
@@ -545,10 +831,12 @@
       "feedback_capture"
     ],
     "feedback_capture": [
+      "feedback_capture",
       "memory_candidate_review",
       "done"
     ],
     "memory_candidate_review": [
+      "memory_candidate_review",
       "memory_committed",
       "done"
     ],

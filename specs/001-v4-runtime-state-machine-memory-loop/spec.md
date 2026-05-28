@@ -2,7 +2,7 @@
 
 **Feature Branch**: `001-v4-runtime-state-machine-memory-loop`  
 **Created**: 2026-05-24  
-**Status**: Implemented Alpha Slice (state calibrated 2026-05-25)
+**Status**: Implemented Alpha Slice (privacy and recovery hardened 2026-05-27)
 **Input**: User description: "Define the V4 runtime state machine for LocalLifeAgent and connect intent recognition, clarification, planning, verification, replanning, confirmation, feedback, memory candidates, and long-term memory references without changing existing API behavior."
 
 ## User Scenarios & Testing *(mandatory)*
@@ -42,6 +42,7 @@ flow, and confirm long-term memory is only created after adopt or correct.
 1. **Given** ordinary preference feedback, **When** the user adopts a candidate memory, **Then** the long-term memory flow records it as reusable planning context.
 2. **Given** high-sensitive feedback, **When** the memory loop evaluates it, **Then** the documented behavior blocks long-term storage by default.
 3. **Given** a later request conflicts with a stored memory, **When** planning begins, **Then** the current request takes priority.
+4. **Given** an ordinary pending candidate, **When** the user corrects it to L2/L3 sensitive content, **Then** no long-term memory is written and the candidate remains pending for a safe retry.
 
 ---
 
@@ -68,8 +69,13 @@ and confirm no required request or response shape changes are introduced.
 - LLM returns low confidence, invalid JSON, or missing required intent fields.
 - User gives insufficient input and the system must ask instead of planning.
 - User feedback contains L2/L3 sensitive data.
+- User correction of a pending candidate introduces L2/L3 sensitive data or
+  third-party authorization data such as tokens, credentials, or authorization
+  codes.
+- SQLite fails during feedback capture or memory decision while the user still needs to retry that operation.
 - Memory retrieval finds relevant lessons that conflict with the current request.
 - The user ignores or corrects a pending memory candidate.
+- Data authorized for future real platform execution is distinct from reusable preference memory.
 - Existing static demo is opened without the backend.
 
 ## Requirements *(mandatory)*
@@ -78,14 +84,15 @@ and confirm no required request or response shape changes are introduced.
 
 - **FR-001**: The runtime contract MUST define states for intent loading, clarification, local planning, tool research, plan merge, verification, replanning, confirmation, execution simulation, feedback capture, memory candidate review, long-term memory write, and memory reference.
 - **FR-002**: The contract MUST map every current `agentLoopTrace` stage to one or more V4 runtime states.
-- **FR-003**: The contract MUST preserve current `/api/intent`, `/api/feedback`, and `/api/memory-candidates/{candidate_id}/decision` request and response behavior for this first productization step.
+- **FR-003**: The contract MUST preserve successful `/api/intent`, `/api/feedback`, and `/api/memory-candidates/{candidate_id}/decision` behavior while adding explicit safety rejection and recoverable storage-failure responses.
 - **FR-004**: The contract MUST state that current user input overrides retrieved memory when the two conflict.
 - **FR-005**: The memory loop MUST require explicit adopt or correct before creating long-term memory.
-- **FR-006**: The memory loop MUST block L2/L3 sensitive information from long-term memory by default.
-- **FR-007**: The runtime MUST keep backend/LLM/LangGraph failure as a recoverable path that falls back to local rules or static demo behavior.
+- **FR-006**: The memory loop MUST block L2/L3 sensitive information from long-term memory by default, including content introduced by candidate correction, and MUST apply this check to every field written or indexed as long-term memory.
+- **FR-007**: The runtime MUST keep backend/LLM/LangGraph or lesson-retrieval failure as a recoverable local-planning path, and MUST preserve feedback or candidate-review context when storage fails during those operations.
 - **FR-008**: The contract MUST distinguish Mock execution actions from real external platform actions.
 - **FR-009**: The runtime plan MUST identify and execute the minimum tests needed for the alpha contract and thin backend Runtime slice.
 - **FR-010**: This feature MAY add a compatible optional `POST /api/runtime` endpoint for Runtime state and backend enhancement aggregation; it MUST NOT migrate frontend planning behavior or introduce real external execution.
+- **FR-011**: Contact, identity, order, payment, authorization code, token, API key, secret, or credential data authorized for future third-party execution MUST use a separate purpose-limited design and MUST NOT be stored as current long-term preference memory.
 
 ### Key Entities *(include if feature involves data)*
 
@@ -112,5 +119,7 @@ and confirm no required request or response shape changes are introduced.
 - V4 productization starts with Runtime state and memory loop governance, not POI or Mock API productization.
 - Only high-risk V4 features require Spec Kit artifacts.
 - Existing `/api/intent`, `/api/feedback`, and candidate-decision behavior remains compatible; `POST /api/runtime` is an additive optional backend endpoint.
+- Compatibility preserves existing success flows while allowing additive safety rejection and storage-unavailable responses.
+- Authorized data for a future external execution integration is out of scope for the current memory tables and Runtime alpha slice.
 - Existing uncommitted business-code changes are preserved and not reverted.
 - The implemented alpha slice aggregates backend Runtime state and enhancement results; planning, replanning, and Mock execution remain frontend-owned until a future migration.

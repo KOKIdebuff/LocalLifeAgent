@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import re
 import sqlite3
@@ -19,6 +20,16 @@ PREFERENCES = {
     "meal",
     "budget",
 }
+SENSITIVITY_RANK = {"L0": 0, "L1": 1, "L2": 2, "L3": 3}
+LOGGER = logging.getLogger(__name__)
+
+PHONE_PATTERN = re.compile(r"(?<!\d)1[3-9]\d{9}(?!\d)")
+LONG_NUMERIC_SECRET_PATTERN = re.compile(r"(?<!\d)\d{13,19}(?!\d)")
+AUTHORIZATION_DATA_PATTERN = re.compile(
+    r"授权码|令牌|访问令牌|刷新令牌|凭据|密钥|api\s*key|access[_ -]?token|refresh[_ -]?token|"
+    r"bearer\s+[A-Za-z0-9._~+/=-]+|secret|credential|AUTH-[A-Za-z0-9_-]+",
+    re.IGNORECASE,
+)
 
 DEFAULT_DB_PATH = Path("memory") / "agent_memory.sqlite"
 DEFAULT_AUDIT_PATH = Path("memory") / "audit.jsonl"
@@ -64,7 +75,10 @@ def get_settings():
 
 def init_db(db_path=DEFAULT_DB_PATH):
     path = Path(db_path)
-    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise sqlite3.OperationalError("unable to initialize database path") from exc
     conn = sqlite3.connect(path)
     try:
         conn.execute(
@@ -282,6 +296,7 @@ def save_feedback(payload, db_path=DEFAULT_DB_PATH):
         feedback_id = cur.lastrowid
         candidate = build_memory_candidate(input_text, user_correction, failure_type)
         candidate_id = None
+        saved_candidate = None
         if candidate and candidate["sensitivityLevel"] in {"L0", "L1"}:
             candidate_cur = conn.execute(
                 """
@@ -305,11 +320,18 @@ def save_feedback(payload, db_path=DEFAULT_DB_PATH):
                 ),
             )
             candidate_id = candidate_cur.lastrowid
+            saved_candidate = {
+                "id": candidate_id,
+                "feedbackId": feedback_id,
+                **candidate,
+                "status": "pending",
+                "createdAt": created_at,
+            }
         conn.commit()
     finally:
         conn.close()
 
-    _append_audit(
+    _safe_append_audit(
         {
             "event": "feedback_received",
             "feedbackId": feedback_id,
@@ -322,7 +344,7 @@ def save_feedback(payload, db_path=DEFAULT_DB_PATH):
     return {
         "ok": True,
         "feedbackId": feedback_id,
-        "candidate": get_memory_candidate(candidate_id, db_path) if candidate_id else None,
+        "candidate": saved_candidate,
         "message": "已生成待确认记忆候选。" if candidate_id else "反馈已记录，但因敏感或不可复用，未生成长期记忆候选。",
     }
 
@@ -360,12 +382,19 @@ def build_memory_candidate(input_text, user_correction, failure_type):
 
 
 def classify_sensitivity(text):
+    text = str(text or "")
+    if re.search(r"疾病|残障|宗教|政治|精确位置|实时位置|支付密码|医保", text):
+        return "L3"
+    if AUTHORIZATION_DATA_PATTERN.search(text):
+        return "L2"
+    if PHONE_PATTERN.search(text):
+        return "L2"
+    if LONG_NUMERIC_SECRET_PATTERN.search(text):
+        return "L2"
     if re.search(r"\b\d{17}[\dXx]\b|护照|身份证|手机号|电话|订单号|酒店订单|支付|银行卡", text):
         return "L2"
     if re.search(r"具体住址|住址|生日|孩子叫|护照号|航班票据", text):
         return "L2"
-    if re.search(r"疾病|残障|宗教|政治|精确位置|实时位置|支付密码|医保", text):
-        return "L3"
     if re.search(r"预算|孩子|安静|上海|出发|减肥|低卡|家人", text):
         return "L1"
     return "L0"
@@ -445,25 +474,121 @@ def get_memory_candidate(candidate_id, db_path=DEFAULT_DB_PATH):
     return _row_to_candidate(row) if row else None
 
 
+def memory_decision_error(error, candidate_id=None, candidate_status=None, sensitivity_level=None):
+    result = {"ok": False, "error": error}
+    if candidate_id:
+        result["candidateId"] = candidate_id
+    if candidate_status:
+        result["candidateStatus"] = candidate_status
+    if sensitivity_level:
+        result["sensitivityLevel"] = sensitivity_level
+    return result
+
+
+def build_memory_search_text(candidate):
+    return " ".join(
+        str(candidate.get(field) or "")
+        for field in ("type", "key", "value", "scope")
+    )
+
+
+def validate_long_term_memory_candidate(candidate):
+    search_text = build_memory_search_text(candidate)
+    evidence = candidate.get("evidence") or []
+    text = " ".join(
+        [
+            str(candidate.get("type") or ""),
+            str(candidate.get("key") or ""),
+            str(candidate.get("value") or ""),
+            *(str(item) for item in evidence),
+            str(candidate.get("scope") or ""),
+            str(candidate.get("source") or ""),
+            search_text,
+        ]
+    )
+    detected_sensitivity = classify_sensitivity(text)
+    stored_sensitivity = candidate.get("sensitivityLevel") or "L0"
+    final_sensitivity = max(
+        (stored_sensitivity, detected_sensitivity),
+        key=lambda level: SENSITIVITY_RANK.get(level, 0),
+    )
+    return {
+        "ok": final_sensitivity not in {"L2", "L3"},
+        "sensitivityLevel": final_sensitivity,
+        "searchText": search_text,
+    }
+
+
 def decide_memory_candidate(candidate_id, action, corrected_value=None, db_path=DEFAULT_DB_PATH):
     init_db(db_path)
     candidate = get_memory_candidate(candidate_id, db_path)
     if not candidate:
-        return {"ok": False, "error": "candidate_not_found"}
+        return memory_decision_error("candidate_not_found", candidate_id=candidate_id)
     if candidate["status"] != "pending":
-        return {"ok": False, "error": "candidate_already_decided", "candidate": candidate}
+        return memory_decision_error(
+            "candidate_already_decided",
+            candidate_id=candidate_id,
+            candidate_status=candidate["status"],
+        )
     if action not in {"adopt", "ignore", "correct"}:
-        return {"ok": False, "error": "invalid_action"}
+        return memory_decision_error("invalid_action", candidate_id=candidate_id, candidate_status=candidate["status"])
+
+    selected = candidate
+    if action == "correct":
+        if not corrected_value or not corrected_value.strip():
+            return memory_decision_error(
+                "correction_required",
+                candidate_id=candidate_id,
+                candidate_status=candidate["status"],
+            )
+        corrected_candidate = build_memory_candidate("", corrected_value.strip(), "user_correction")
+        selected = {**candidate, **corrected_candidate}
 
     now = _now()
     new_status = "adopted" if action in {"adopt", "correct"} else "ignored"
-    value = corrected_value.strip() if corrected_value and action == "correct" else candidate["value"]
+    validation = None
+    if new_status == "adopted":
+        validation = validate_long_term_memory_candidate(selected)
+        if not validation["ok"]:
+            error = "sensitive_correction_blocked" if action == "correct" else "sensitive_candidate_blocked"
+            return memory_decision_error(
+                error,
+                candidate_id=candidate_id,
+                candidate_status=candidate["status"],
+                sensitivity_level=validation["sensitivityLevel"],
+            )
+        selected = {**selected, "sensitivityLevel": validation["sensitivityLevel"]}
+
     conn = sqlite3.connect(db_path)
     try:
-        conn.execute("UPDATE memory_candidates SET status = ? WHERE id = ?", (new_status, candidate_id))
+        if action == "correct":
+            conn.execute(
+                """
+                UPDATE memory_candidates
+                SET type = ?, key = ?, value = ?, confidence = ?, evidence_json = ?,
+                    scope = ?, sensitivity_level = ?, source = ?, status = ?, reason = ?
+                WHERE id = ?
+                """,
+                (
+                    selected["type"],
+                    selected["key"],
+                    selected["value"],
+                    selected["confidence"],
+                    json.dumps(selected["evidence"], ensure_ascii=False),
+                    selected["scope"],
+                    selected["sensitivityLevel"],
+                    selected["source"],
+                    new_status,
+                    selected["reason"],
+                    candidate_id,
+                ),
+            )
+        else:
+            conn.execute("UPDATE memory_candidates SET status = ? WHERE id = ?", (new_status, candidate_id))
         memory_id = None
+        memory = None
         if new_status == "adopted":
-            search_text = " ".join([candidate["type"], candidate["key"], value, candidate["scope"]])
+            search_text = validation["searchText"]
             cur = conn.execute(
                 """
                 INSERT INTO memories
@@ -473,14 +598,14 @@ def decide_memory_candidate(candidate_id, action, corrected_value=None, db_path=
                 """,
                 (
                     candidate_id,
-                    candidate["type"],
-                    candidate["key"],
-                    value,
-                    candidate["confidence"],
-                    json.dumps(candidate["evidence"], ensure_ascii=False),
-                    candidate["scope"],
-                    candidate["sensitivityLevel"],
-                    candidate["source"],
+                    selected["type"],
+                    selected["key"],
+                    selected["value"],
+                    selected["confidence"],
+                    json.dumps(selected["evidence"], ensure_ascii=False),
+                    selected["scope"],
+                    selected["sensitivityLevel"],
+                    selected["source"],
                     "active",
                     search_text,
                     now,
@@ -489,17 +614,32 @@ def decide_memory_candidate(candidate_id, action, corrected_value=None, db_path=
                 ),
             )
             memory_id = cur.lastrowid
+            memory = {
+                "id": memory_id,
+                "type": selected["type"],
+                "key": selected["key"],
+                "value": selected["value"],
+                "lesson": selected["value"],
+                "avoidance": "当前需求优先；若不确定，先追问用户确认。",
+                "confidence": selected["confidence"],
+                "evidence": selected["evidence"],
+                "scope": selected["scope"],
+                "sensitivityLevel": selected["sensitivityLevel"],
+                "source": selected["source"],
+                "createdAt": now,
+                "lastSeen": now,
+            }
         conn.commit()
     finally:
         conn.close()
 
-    _append_audit({"event": "candidate_decided", "candidateId": candidate_id, "action": action, "memoryId": memory_id, "createdAt": now})
+    _safe_append_audit({"event": "candidate_decided", "candidateId": candidate_id, "action": action, "memoryId": memory_id, "createdAt": now})
     return {
         "ok": True,
         "candidateId": candidate_id,
         "status": new_status,
         "memoryId": memory_id,
-        "memory": get_memory(memory_id, db_path) if memory_id else None,
+        "memory": memory,
     }
 
 
@@ -527,7 +667,7 @@ def sqlite_available(db_path=DEFAULT_DB_PATH):
     try:
         init_db(db_path)
         return True
-    except sqlite3.Error:
+    except (sqlite3.Error, OSError):
         return False
 
 
@@ -583,7 +723,14 @@ def _record_memory_usage(user_input, memory_ids, db_path):
         conn.commit()
     finally:
         conn.close()
-    _append_audit({"event": "memory_retrieved", "memoryIds": memory_ids, "createdAt": now})
+    _safe_append_audit({"event": "memory_retrieved", "memoryIds": memory_ids, "createdAt": now})
+
+
+def _safe_append_audit(event):
+    try:
+        _append_audit(event)
+    except OSError:
+        LOGGER.warning("Audit log write failed; continuing after committed operation.", exc_info=True)
 
 
 def _append_audit(event, audit_path=DEFAULT_AUDIT_PATH):

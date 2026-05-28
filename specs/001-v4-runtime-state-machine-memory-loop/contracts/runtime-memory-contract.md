@@ -31,7 +31,9 @@ Machine-readable schemas:
 
 Existing clients must continue to work against the current alpha endpoints. The
 schemas document current and thin Runtime contracts; they do not require old
-clients to migrate away from the existing alpha endpoints.
+clients to migrate away from the existing alpha endpoints. Existing success
+shapes remain stable, while explicit privacy rejection and recoverable storage
+failure responses are additive safety behavior.
 
 ## Existing Endpoint: POST /api/intent
 
@@ -47,6 +49,9 @@ Compatibility requirements:
 - `runtimePath` continues to distinguish `langgraph` and `direct_llm`.
 - Missing API key, LLM errors, low confidence, or invalid intent remain
   recoverable.
+- If SQLite cannot be read, the endpoint keeps the recoverable error shape with
+  `source: "sqlite_unavailable"`, `error: "storage_unavailable"`, and
+  `lessonsUsed: []`.
 
 Runtime state mapping:
 
@@ -69,6 +74,8 @@ Compatibility requirements:
 - Feedback containing sensitive or non-actionable content may return
   `candidate: null`.
 - A created candidate must remain `pending` until a later user decision.
+- If SQLite cannot accept feedback, the endpoint returns HTTP `503` with
+  `ok: false`, `error: "storage_unavailable"`, and `recoverable: true`.
 
 Runtime state mapping:
 
@@ -94,6 +101,21 @@ Compatibility requirements:
   `memory`.
 - Already-decided or missing candidates remain explicit errors.
 - `ignore` must not create long-term memory.
+- `correct` requires a non-blank `correctedValue` and re-runs the unified
+  long-term memory admission gate before any long-term memory write.
+- The long-term memory admission gate evaluates every field that will be written
+  or indexed as memory, including `type`, `key`, `value`, `evidence`, `scope`,
+  `source`, and derived `search_text`.
+- L2/L3 corrected content or third-party execution authorization data returns
+  `sensitive_correction_blocked`; the candidate stays `pending` so the user can
+  retry with a safe correction.
+- `adopt` defensively re-checks the full stored candidate before writing, so a
+  legacy or externally corrupted sensitive candidate cannot bypass the boundary.
+- Privacy rejection responses must not echo `candidate.value`,
+  `candidate.evidence`, or other candidate text; they return only safe metadata
+  such as `candidateId`, `candidateStatus`, `error`, and `sensitivityLevel`.
+- If SQLite cannot apply the decision, the endpoint returns HTTP `503` with the
+  recoverable storage failure shape.
 
 Runtime state mapping:
 
@@ -122,8 +144,17 @@ Required contract properties:
 
 - Every response exposes `currentState` and `allowedNextStates`.
 - Clarification responses stop before tool research or plan merge.
-- Recoverable failures route through `failed_recoverable` and preserve fallback
-  to local planning.
+- Intent and lesson-retrieval failures route through `failed_recoverable` and
+  preserve fallback to local planning.
+- Storage failure while capturing feedback or deciding a candidate returns
+  `operation_recoverable_failure` and preserves the active review state for
+  retry rather than returning to planning.
+- Audit JSONL writes are best-effort telemetry for this alpha slice. Audit write
+  failure after a successful SQLite commit must not turn the committed operation
+  into a client-visible failure or retry instruction.
+- A privacy-rejected correction returns `memory_decision_rejected` in
+  `memory_candidate_review`; malformed actions are request-validation failures
+  and do not create runtime events.
 - Feedback and memory responses preserve the existing candidate-first memory
   loop.
 - Current request constraints always override retrieved long-term memory.
@@ -132,7 +163,7 @@ Required contract properties:
 - Runtime responses must not expose `agentLoopTrace` as a contract field; clients
   may render their own trace from `events`.
 
-The five minimum response scenarios are:
+The minimum response scenarios are:
 
 - `planning_ready`: backend enhancement is complete enough for frontend planning.
 - `clarification_required`: the system must ask for missing group or time data.
@@ -140,6 +171,10 @@ The five minimum response scenarios are:
   planning may continue.
 - `feedback_captured`: feedback was stored and may have produced a candidate.
 - `memory_committed`: an adopted or corrected candidate became long-term memory.
+- `memory_decision_rejected`: a valid decision request was not committed and the
+  candidate remains reviewable.
+- `operation_recoverable_failure`: feedback or candidate-decision storage is
+  temporarily unavailable and the current operation may be retried.
 
 ## Frontend Migration Rule
 
@@ -169,8 +204,8 @@ The state machine is fixed for this contract phase:
 | `replanning` | `verifying_plan` |
 | `ready_for_confirmation` | `executing_mock_actions`, `feedback_capture` |
 | `executing_mock_actions` | `feedback_capture` |
-| `feedback_capture` | `memory_candidate_review`, `done` |
-| `memory_candidate_review` | `memory_committed`, `done` |
+| `feedback_capture` | `feedback_capture`, `memory_candidate_review`, `done` |
+| `memory_candidate_review` | `memory_candidate_review`, `memory_committed`, `done` |
 | `memory_committed` | `done` |
 | `failed_recoverable` | `planning_local` |
 | `done` | none |
@@ -191,9 +226,17 @@ The runtime contract must keep these categories separate:
 No state transition may imply real external execution until a later integration
 spec explicitly changes this contract.
 
+Contact, identity, order, payment, authorization codes, access tokens, refresh
+tokens, API keys, credentials, and similar data authorized for future real
+platform execution are not long-term preference memories. A later integration
+spec must define a separate purpose-limited authorization channel before such
+data can be handled.
+
 ## Implementation Boundary
 
-This contract implements a thin backend Runtime in `server.py` and keeps
-`backend_core.py`, `app.js`, `agent-core.js`, and `graph_runtime.py` business
-behavior unchanged. The three existing alpha endpoints remain available for old
-clients unless a later migration spec says otherwise.
+This contract implements a thin backend Runtime in `server.py`; the current
+hardening updates `backend_core.py` privacy enforcement, safe rejection response
+shapes, best-effort audit behavior, and storage failure responses without
+migrating frontend planning or Mock execution. The three existing alpha
+endpoints remain available for old clients unless a later migration spec says
+otherwise.
