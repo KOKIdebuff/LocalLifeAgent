@@ -27,6 +27,260 @@ Machine-readable schemas:
   runtime session, runtime event, runtime state, allowed transition table, and
   frontend migration boundary.
 
+## Product-Grade Headless Boundary
+
+The V4 product-grade target is a headless Runtime, not a UI runtime. The Runtime
+Core owns session lifecycle, state-machine transitions, runtime events,
+persistence, and recovery points. It must not own cards, buttons, layout,
+frontend interaction details, external real execution, public collaboration, or
+payment / booking / messaging platform behavior.
+
+The stable access surface is split into three contracts:
+
+- `RuntimeAdapter`: how clients call Runtime operations such as create session,
+  get session, submit an event intent, pause, resume, close, list events, query
+  capabilities, create recovery point, and rollback to a recovery point.
+- `Capability Contract`: both the frozen `targetCapabilities` product target and
+  the authoritative `effectiveCapabilities` of the current running
+  implementation. Clients use only effective capabilities for enablement and
+  fallback decisions.
+- `Event Contract`: what happened inside Runtime, expressed as UI-agnostic
+  events that a frontend may render but must not mutate.
+
+V5 UI must consume Runtime only through these three contracts. It must not read
+Runtime tables, depend on Runtime internal classes, require Runtime to return UI
+cards, or add Runtime capabilities merely because a UI sketch contains a button.
+
+## Runtime P0 State-Machine Source
+
+`runtime-state-machine.json` is the single source of truth for V4 Runtime P0:
+
+- Runtime states and terminal-state markers.
+- Lifecycle states.
+- Command to Event mappings.
+- Legal Runtime and lifecycle transitions.
+- Transition guards.
+- Recovery Point retention and replay boundaries.
+
+`RuntimeState`, `RuntimeEventType`, `RuntimeTransition`,
+`x-runtimeTransitions`, state-machine documentation, and the transition test
+matrix are generated or verified against this file. CI must fail when a derived
+artifact drifts from the source.
+
+`x-runtimeTransitions` remains explanatory metadata. It is not a security or
+correctness mechanism. Standard JSON Schema `oneOf` transition constraints and
+the server-side Transition Engine enforce legal transitions.
+
+The approved machine version is `v4-p0-2`. It replaces three semantically
+incorrect transition Events:
+
+- `ready_for_confirmation -> confirmation_accepted -> executing_mock_actions`
+- `executing_mock_actions -> mock_execution_completed -> feedback_capture`
+- `failed_recoverable -> recovery_resumed -> planning_local`
+
+The removed combinations remain invalid in the product-grade Event stream.
+
+## Runtime P0 Transition Engine
+
+All product-grade state changes must pass through one Transition Engine:
+
+1. Validate the Adapter write envelope and event intent.
+2. Read the persisted session; client-provided `fromState` is not trusted.
+3. Check lifecycle state, current Runtime state, declared Event, target state,
+   and guards.
+4. Compare `expectedVersion` with persisted `session.version`.
+5. Enforce the unique `idempotencyKey`.
+6. Generate the authoritative Event.
+7. Write the Event and updated session in the same database transaction.
+
+An illegal transition returns `invalid_transition` with the current Runtime
+state and allowed Events, without exposing internal guard data. A stale write
+returns `version_conflict`. `done` and lifecycle `closed` are terminal and cannot
+continue.
+
+## Runtime P0 Session and Optimistic Lock
+
+The persisted session contract contains:
+
+- `sessionId`
+- `lifecycleStatus`
+- `runtimeState`
+- `version`
+- `lastEventId`
+- `latestRecoveryPointId`
+- `pausedAt`
+- `closedAt`
+- `machineVersion`
+- `schemaVersion`
+- `updatedAt`
+
+Every non-create write carries `expectedVersion`. The session update succeeds
+only when the stored version matches, then increments the version. P0 uses a
+single session repository write boundary. Database row locking or a serialized
+session mailbox may be added later without changing the external contract.
+
+## Runtime P0 Command and Event Boundary
+
+The public RuntimeAdapter method is `submit_event`, but its input is an event
+intent, not a trusted persisted Event. The client cannot submit a trusted
+`fromState`. Runtime reads the persisted session, applies lifecycle and
+transition guards, checks `expectedVersion` and `idempotencyKey`, generates the
+authoritative Event, and atomically persists the Event and session update.
+
+The internal Command model remains available as an implementation DTO and
+compatibility mechanism. It is not the V5 UI access contract.
+
+P0 Commands include:
+
+- `CreateSession`
+- `SubmitClarification`
+- `PauseSession`
+- `ResumeSession`
+- `CloseSession`
+- `CreateRecoveryPoint`
+- `RollbackToRecoveryPoint`
+
+Every public write carries `sessionId`, `expectedVersion`, and
+`idempotencyKey`, except session creation, which establishes version 1.
+
+The Event envelope reserves `eventId`, `sessionId`, `sequence`, `eventVersion`,
+`machineVersion`, `commandId`, `correlationId`, `causationId`, actor, trace,
+created time, reason, and a safe payload. Business Events carry
+`runtimeTransition`; lifecycle Events carry `fromLifecycleStatus` and
+`toLifecycleStatus` without inventing a business-state transition. V4 P0 does
+not require tenant isolation, outbox publication, consumer idempotency, or
+internal/external event classes; those remain product-grade extensions.
+
+Lifecycle rules are independent of `runtimeState`:
+
+- `active -> pause_session -> paused`
+- `paused -> resume_session -> active`
+- `active|paused -> close_session -> closed`
+- `paused` permits reads but rejects business-state advancement with
+  `session_paused`
+- `closed` rejects all writes with `session_closed`
+
+## Runtime P0 Recovery Point
+
+A Recovery Point is a small complete Runtime recovery snapshot, not only a state
+name. It contains:
+
+- recovery point and session identifiers
+- session version
+- Runtime state
+- small safe snapshot
+- creation time
+
+P0 retains only the latest stable Recovery Point. A rollback appends
+`rollback_completed` or `rollback_failed`, creates a new session version, and
+does not overwrite Event history. It must not copy the full UI Contract, raw
+LLM output, or large execution payloads.
+
+Recommended creation points are after plan verification, before user
+confirmation, before mock execution, and optionally before a recoverable
+failure.
+
+## Runtime P0 Capability Profile
+
+`targetCapabilities` records the V4 P0 target:
+
+- session lifecycle, state machine, Event stream, persistence, Recovery Point,
+  RuntimeAdapter, capability query, and contract tests: `supported`, meaning
+  their contracts are frozen
+- rollback primitive: `degraded`, meaning its limited P0 contract is frozen;
+  latest Recovery Point only, no external compensation, no task replay
+- task replay and external compensation: `unsupported`, meaning their exclusion
+  from the target is explicitly frozen
+
+`effectiveCapabilities` records current V4 alpha truth:
+
+- contract tests: `available`
+- state machine and Event stream: `degraded`; the thin endpoint returns
+  state-shaped responses and transient Events but has no persisted Transition
+  Engine or queryable Event stream
+- session lifecycle, Runtime persistence, Recovery Point, rollback primitive,
+  RuntimeAdapter, and capability query: `unavailable`
+- task replay and external compensation: `unavailable`
+
+Clients must not use `targetCapabilities` to enable a UI action.
+
+## Runtime P0 Persistence
+
+P0 continues to use the existing SQLite file but adds logically independent
+`runtime_sessions`, `runtime_events`, `runtime_recovery_points`, and
+`runtime_schema_migrations` tables. Runtime repositories must not expose SQLite
+details or depend on memory-table internals. Session update and Event insertion
+share one transaction. Session version is the optimistic lock,
+`idempotencyKey` is unique, SQLite uses a busy timeout, Event payloads use field
+allowlists, rollback appends history, and old thin Runtime temporary sessions
+are not migrated.
+
+P0 does not add database splitting, read/write separation, outbox publication,
+event compression, or an operations administration backend.
+
+## Dual Entry and Compatibility Adapter
+
+The approved architecture is dual-entry with one Runtime Core:
+
+```text
+POST /api/runtime
+  -> CompatibilityAdapter
+  -> Runtime Core
+
+/api/runtime/sessions/*
+  -> RuntimeAdapter
+  -> Runtime Core
+```
+
+The CompatibilityAdapter only validates, converts, and projects. It must not
+own state transitions, failure rules, or persistence. The legacy request and
+response contract is protected by golden fixtures. Adoption of the new Core is
+feature-flagged, uses shadow comparison before rollout, forbids old/new dual
+writes, and retains an immediate legacy fallback.
+
+The new P0 API surface is:
+
+- `POST /api/runtime/sessions`
+- `GET /api/runtime/sessions/{sessionId}`
+- `POST /api/runtime/sessions/{sessionId}/events`
+- `POST /api/runtime/sessions/{sessionId}/pause`
+- `POST /api/runtime/sessions/{sessionId}/resume`
+- `POST /api/runtime/sessions/{sessionId}/close`
+- `GET /api/runtime/sessions/{sessionId}/events`
+- `GET /api/runtime/capabilities`
+
+Capability query reports effective implementation truth, not target intent.
+
+## Runtime and Execution Boundary
+
+V4 Runtime P0 owns session lifecycle, Runtime state, Runtime Events, persistence,
+Recovery Points, and an optional current Execution reference. It does not own
+task/step definitions, step advancement, attempt history, retry/timeout,
+cancellation, blocking, or Mock result storage.
+
+Execution is an independent domain and contract. In V4 P0 only Execution
+references and summary Event names are frozen. Execution implementation starts
+in P1 and may initially remain a separate module in the same FastAPI process.
+Runtime never directly mutates a Step; Execution reports authoritative summary
+events through a stable service/adapter boundary.
+
+## Runtime P0 Replay Boundary
+
+P0 supports ordered Event queries, diagnostic Event inspection, recovery from
+the latest Recovery Point, and reducer verification in tests. It does not
+provide business-level replay, repeat external actions, rerun the LLM from
+history, rebuild every business object, or restore an arbitrary historical
+instant.
+
+## Language-Neutral Consumption
+
+The Runtime state-machine source is language-neutral JSON. V4 P0 does not
+generate multiple Runtime engines. The Python backend reads and enforces the
+source through the Transition Engine. Tests verify that generated schema,
+documentation, and transition matrices stay aligned. V5 only consumes
+read-only state, capability, and Event DTOs; it does not run the Runtime state
+machine in the browser.
+
 ## Compatibility Rule
 
 Existing clients must continue to work against the current alpha endpoints. The
@@ -131,9 +385,14 @@ Runtime state mapping:
 `POST /api/runtime` is a thin V4 aggregation endpoint. It is frontend-agnostic
 and carries runtime state plus backend enhancement results only.
 
+Current implementation boundary: this endpoint is a stateless thin aggregator.
+It does not persist backend sessions, verify full state continuity, or take over
+planning. V4 Runtime P0 is the planned persisted headless state-machine stage;
+V5 consumes its stable adapter, capability, and Event contracts.
+
 Intended role:
 
-- Accept a user input plus optional session/event data.
+- Accept a user input plus optional session and operation data.
 - Coordinate intent, recoverable fallback, feedback, and memory contracts behind
   one stable runtime boundary.
 - Return the current runtime state and allowed next states after each turn.
@@ -149,6 +408,14 @@ Required contract properties:
 - Storage failure while capturing feedback or deciding a candidate returns
   `operation_recoverable_failure` and preserves the active review state for
   retry rather than returning to planning.
+- Future V4 lightweight hardening should make low-confidence intent return a
+  recoverable downgrade state from Runtime itself, not rely only on frontend
+  confidence checks.
+- `feedback` and `memoryDecision` are both supported, but they are mutually
+  exclusive per Runtime request. If both field names are present, the request
+  is rejected with `mutually_exclusive_operations`, including when either value
+  is `null`. Callers must submit feedback capture and memory-candidate decision
+  as separate requests.
 - Audit JSONL writes are best-effort telemetry for this alpha slice. Audit write
   failure after a successful SQLite commit must not turn the committed operation
   into a client-visible failure or retry instruction.
@@ -158,6 +425,10 @@ Required contract properties:
 - Feedback and memory responses preserve the existing candidate-first memory
   loop.
 - Current request constraints always override retrieved long-term memory.
+- Current `MemoryUsageEvent` records are memory reference records, not complete
+  audit records. A future lightweight DB update should add `priority_rule` with
+  default `current_request_overrides_memory` and test that it is written when
+  memory usage is recorded.
 - Runtime responses must not contain DOM fields, current `app.js` component
   state, or frontend-specific display structures.
 - Runtime responses must not expose `agentLoopTrace` as a contract field; clients

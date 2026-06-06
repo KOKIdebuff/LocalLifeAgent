@@ -2,7 +2,7 @@
 
 **Feature Branch**: `001-v4-runtime-state-machine-memory-loop`  
 **Created**: 2026-05-24  
-**Status**: Implemented Alpha Slice (privacy and recovery hardened 2026-05-27)
+**Status**: Implemented Alpha Slice; Product-grade Headless Runtime P0 contract frozen 2026-06-05, implementation pending
 **Input**: User description: "Define the V4 runtime state machine for LocalLifeAgent and connect intent recognition, clarification, planning, verification, replanning, confirmation, feedback, memory candidates, and long-term memory references without changing existing API behavior."
 
 ## User Scenarios & Testing *(mandatory)*

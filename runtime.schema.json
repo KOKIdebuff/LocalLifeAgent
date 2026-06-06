@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "runtime.schema.json",
-  "title": "V4 runtime state machine contract bundle",
-  "description": "Machine-readable contract for the thin POST /api/runtime aggregation endpoint. The endpoint carries runtime state and backend enhancement results, while planning remains owned by the frontend agent-core.js module until a later migration.",
+  "title": "V4 thin compatibility and product-grade headless Runtime contract bundle",
+  "description": "Machine-readable contracts for the existing thin POST /api/runtime compatibility endpoint and the V4 Runtime P0 headless target: persisted sessions, adapter event intents, server-generated Events, legal transitions, optimistic locking, recovery points, stable adapters, and UI-independent capability boundaries.",
   "oneOf": [
     {
       "$ref": "#/$defs/RuntimeRequest"
@@ -18,6 +18,54 @@
     },
     {
       "$ref": "#/$defs/RuntimeTransition"
+    },
+    {
+      "$ref": "#/$defs/RuntimeCoreContract"
+    },
+    {
+      "$ref": "#/$defs/RuntimeAdapterContract"
+    },
+    {
+      "$ref": "#/$defs/RuntimeCapabilityContract"
+    },
+    {
+      "$ref": "#/$defs/RuntimeEventContract"
+    },
+    {
+      "$ref": "#/$defs/PersistedRuntimeSession"
+    },
+    {
+      "$ref": "#/$defs/RuntimeCommand"
+    },
+    {
+      "$ref": "#/$defs/RuntimeEventEnvelope"
+    },
+    {
+      "$ref": "#/$defs/RuntimeRecoveryPoint"
+    },
+    {
+      "$ref": "#/$defs/RuntimeTransitionEngineContract"
+    },
+    {
+      "$ref": "#/$defs/RuntimeTransitionError"
+    },
+    {
+      "$ref": "#/$defs/RuntimeVersionConflictError"
+    },
+    {
+      "$ref": "#/$defs/RuntimeAdapterWriteInput"
+    },
+    {
+      "$ref": "#/$defs/RuntimeAdapterError"
+    },
+    {
+      "$ref": "#/$defs/RuntimePersistenceContract"
+    },
+    {
+      "$ref": "#/$defs/RuntimeSessionLifecycleContract"
+    },
+    {
+      "$ref": "#/$defs/RuntimeOperationConflictError"
     }
   ],
   "$defs": {
@@ -44,16 +92,6 @@
           "default": {},
           "additionalProperties": true
         },
-        "event": {
-          "oneOf": [
-            {
-              "$ref": "#/$defs/RuntimeEvent"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
         "feedback": {
           "oneOf": [
             {
@@ -74,7 +112,68 @@
             }
           ]
         }
-      }
+      },
+      "allOf": [
+        {
+          "not": {
+            "required": [
+              "feedback",
+              "memoryDecision"
+            ]
+          }
+        }
+      ],
+      "x-operationRules": {
+        "feedbackSupported": true,
+        "memoryDecisionSupported": true,
+        "sameRequestAllowed": false,
+        "conflictError": "mutually_exclusive_operations",
+        "conflictingFields": [
+          "feedback",
+          "memoryDecision"
+        ]
+      },
+      "examples": [
+        {
+          "input": "周末带孩子去室内活动",
+          "feedback": {
+            "userCorrection": "节奏太紧"
+          }
+        },
+        {
+          "input": "周末带孩子去室内活动",
+          "memoryDecision": {
+            "candidateId": 12,
+            "action": "adopt"
+          }
+        }
+      ],
+      "x-invalidExamples": [
+        {
+          "reason": "feedback and memoryDecision cannot appear in the same request",
+          "value": {
+            "input": "周末带孩子去室内活动",
+            "feedback": {
+              "userCorrection": "节奏太紧"
+            },
+            "memoryDecision": {
+              "candidateId": 12,
+              "action": "adopt"
+            }
+          }
+        },
+        {
+          "reason": "field presence is mutually exclusive even when one value is null",
+          "value": {
+            "input": "周末带孩子去室内活动",
+            "feedback": null,
+            "memoryDecision": {
+              "candidateId": 12,
+              "action": "ignore"
+            }
+          }
+        }
+      ]
     },
     "RuntimeFeedbackRequest": {
       "type": "object",
@@ -681,6 +780,37 @@
         },
         "memoryPriorityRule": {
           "const": "current_request_overrides_memory"
+        },
+        "lifecycleStatus": {
+          "$ref": "#/$defs/RuntimeLifecycleStatus"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "latestRecoveryPointId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pausedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "closedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
         }
       }
     },
@@ -695,26 +825,7 @@
       ],
       "properties": {
         "type": {
-          "enum": [
-            "intent_loaded",
-            "clarification_required",
-            "clarification_answered",
-            "planning_completed",
-            "tools_researched",
-            "plans_merged",
-            "plan_verified",
-            "replan_requested",
-            "confirmation_ready",
-            "mock_execution_completed",
-            "feedback_captured",
-            "memory_candidate_created",
-            "memory_ignored",
-            "memory_committed",
-            "memory_decision_rejected",
-            "operation_recoverable_failure",
-            "recoverable_failure",
-            "session_done"
-          ]
+          "$ref": "#/$defs/RuntimeTransitionEventType"
         },
         "fromState": {
           "$ref": "#/$defs/RuntimeState"
@@ -731,6 +842,76 @@
       }
     },
     "RuntimeTransition": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/TransitionIntentLoadingClarificationRequired"
+        },
+        {
+          "$ref": "#/$defs/TransitionIntentLoadingIntentLoaded"
+        },
+        {
+          "$ref": "#/$defs/TransitionIntentLoadingRecoverableFailure"
+        },
+        {
+          "$ref": "#/$defs/TransitionClarifyingClarificationAnswered"
+        },
+        {
+          "$ref": "#/$defs/TransitionPlanningLocalPlanningCompleted"
+        },
+        {
+          "$ref": "#/$defs/TransitionResearchingToolsToolsResearched"
+        },
+        {
+          "$ref": "#/$defs/TransitionMergingPlansPlansMerged"
+        },
+        {
+          "$ref": "#/$defs/TransitionVerifyingPlanConfirmationReady"
+        },
+        {
+          "$ref": "#/$defs/TransitionVerifyingPlanReplanRequested"
+        },
+        {
+          "$ref": "#/$defs/TransitionReplanningPlanVerified"
+        },
+        {
+          "$ref": "#/$defs/TransitionReadyForConfirmationConfirmationAccepted"
+        },
+        {
+          "$ref": "#/$defs/TransitionReadyForConfirmationFeedbackCaptured"
+        },
+        {
+          "$ref": "#/$defs/TransitionExecutingMockActionsMockExecutionCompleted"
+        },
+        {
+          "$ref": "#/$defs/TransitionFeedbackCaptureOperationRecoverableFailure"
+        },
+        {
+          "$ref": "#/$defs/TransitionFeedbackCaptureMemoryCandidateCreated"
+        },
+        {
+          "$ref": "#/$defs/TransitionFeedbackCaptureSessionDone"
+        },
+        {
+          "$ref": "#/$defs/TransitionMemoryCandidateReviewDecisionRejected"
+        },
+        {
+          "$ref": "#/$defs/TransitionMemoryCandidateReviewOperationRecoverableFailure"
+        },
+        {
+          "$ref": "#/$defs/TransitionMemoryCandidateReviewMemoryCommitted"
+        },
+        {
+          "$ref": "#/$defs/TransitionMemoryCandidateReviewMemoryIgnored"
+        },
+        {
+          "$ref": "#/$defs/TransitionMemoryCommittedSessionDone"
+        },
+        {
+          "$ref": "#/$defs/TransitionFailedRecoverableRecoveryResumed"
+        }
+      ]
+    },
+    "RuntimeTransitionBase": {
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -746,9 +927,317 @@
           "$ref": "#/$defs/RuntimeState"
         },
         "eventType": {
-          "$ref": "#/$defs/RuntimeEventType"
+          "$ref": "#/$defs/RuntimeTransitionEventType"
         }
       }
+    },
+    "TransitionIntentLoadingClarificationRequired": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RuntimeTransitionBase"
+        },
+        {
+          "properties": {
+            "fromState": { "const": "intent_loading" },
+            "eventType": { "const": "clarification_required" },
+            "toState": { "const": "clarifying" }
+          }
+        }
+      ]
+    },
+    "TransitionIntentLoadingIntentLoaded": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RuntimeTransitionBase"
+        },
+        {
+          "properties": {
+            "fromState": { "const": "intent_loading" },
+            "eventType": { "const": "intent_loaded" },
+            "toState": { "const": "planning_local" }
+          }
+        }
+      ]
+    },
+    "TransitionIntentLoadingRecoverableFailure": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RuntimeTransitionBase"
+        },
+        {
+          "properties": {
+            "fromState": { "const": "intent_loading" },
+            "eventType": { "const": "recoverable_failure" },
+            "toState": { "const": "failed_recoverable" }
+          }
+        }
+      ]
+    },
+    "TransitionClarifyingClarificationAnswered": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RuntimeTransitionBase"
+        },
+        {
+          "properties": {
+            "fromState": { "const": "clarifying" },
+            "eventType": { "const": "clarification_answered" },
+            "toState": { "const": "planning_local" }
+          }
+        }
+      ]
+    },
+    "TransitionPlanningLocalPlanningCompleted": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RuntimeTransitionBase"
+        },
+        {
+          "properties": {
+            "fromState": { "const": "planning_local" },
+            "eventType": { "const": "planning_completed" },
+            "toState": { "const": "researching_tools" }
+          }
+        }
+      ]
+    },
+    "TransitionResearchingToolsToolsResearched": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RuntimeTransitionBase"
+        },
+        {
+          "properties": {
+            "fromState": { "const": "researching_tools" },
+            "eventType": { "const": "tools_researched" },
+            "toState": { "const": "merging_plans" }
+          }
+        }
+      ]
+    },
+    "TransitionMergingPlansPlansMerged": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RuntimeTransitionBase"
+        },
+        {
+          "properties": {
+            "fromState": { "const": "merging_plans" },
+            "eventType": { "const": "plans_merged" },
+            "toState": { "const": "verifying_plan" }
+          }
+        }
+      ]
+    },
+    "TransitionVerifyingPlanConfirmationReady": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RuntimeTransitionBase"
+        },
+        {
+          "properties": {
+            "fromState": { "const": "verifying_plan" },
+            "eventType": { "const": "confirmation_ready" },
+            "toState": { "const": "ready_for_confirmation" }
+          }
+        }
+      ]
+    },
+    "TransitionVerifyingPlanReplanRequested": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RuntimeTransitionBase"
+        },
+        {
+          "properties": {
+            "fromState": { "const": "verifying_plan" },
+            "eventType": { "const": "replan_requested" },
+            "toState": { "const": "replanning" }
+          }
+        }
+      ]
+    },
+    "TransitionReplanningPlanVerified": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RuntimeTransitionBase"
+        },
+        {
+          "properties": {
+            "fromState": { "const": "replanning" },
+            "eventType": { "const": "plan_verified" },
+            "toState": { "const": "verifying_plan" }
+          }
+        }
+      ]
+    },
+    "TransitionReadyForConfirmationConfirmationAccepted": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RuntimeTransitionBase"
+        },
+        {
+          "properties": {
+            "fromState": { "const": "ready_for_confirmation" },
+            "eventType": { "const": "confirmation_accepted" },
+            "toState": { "const": "executing_mock_actions" }
+          }
+        }
+      ]
+    },
+    "TransitionReadyForConfirmationFeedbackCaptured": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RuntimeTransitionBase"
+        },
+        {
+          "properties": {
+            "fromState": { "const": "ready_for_confirmation" },
+            "eventType": { "const": "feedback_captured" },
+            "toState": { "const": "feedback_capture" }
+          }
+        }
+      ]
+    },
+    "TransitionExecutingMockActionsMockExecutionCompleted": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RuntimeTransitionBase"
+        },
+        {
+          "properties": {
+            "fromState": { "const": "executing_mock_actions" },
+            "eventType": { "const": "mock_execution_completed" },
+            "toState": { "const": "feedback_capture" }
+          }
+        }
+      ]
+    },
+    "TransitionFeedbackCaptureOperationRecoverableFailure": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RuntimeTransitionBase"
+        },
+        {
+          "properties": {
+            "fromState": { "const": "feedback_capture" },
+            "eventType": { "const": "operation_recoverable_failure" },
+            "toState": { "const": "feedback_capture" }
+          }
+        }
+      ]
+    },
+    "TransitionFeedbackCaptureMemoryCandidateCreated": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RuntimeTransitionBase"
+        },
+        {
+          "properties": {
+            "fromState": { "const": "feedback_capture" },
+            "eventType": { "const": "memory_candidate_created" },
+            "toState": { "const": "memory_candidate_review" }
+          }
+        }
+      ]
+    },
+    "TransitionFeedbackCaptureSessionDone": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RuntimeTransitionBase"
+        },
+        {
+          "properties": {
+            "fromState": { "const": "feedback_capture" },
+            "eventType": { "const": "session_done" },
+            "toState": { "const": "done" }
+          }
+        }
+      ]
+    },
+    "TransitionMemoryCandidateReviewDecisionRejected": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RuntimeTransitionBase"
+        },
+        {
+          "properties": {
+            "fromState": { "const": "memory_candidate_review" },
+            "eventType": { "const": "memory_decision_rejected" },
+            "toState": { "const": "memory_candidate_review" }
+          }
+        }
+      ]
+    },
+    "TransitionMemoryCandidateReviewOperationRecoverableFailure": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RuntimeTransitionBase"
+        },
+        {
+          "properties": {
+            "fromState": { "const": "memory_candidate_review" },
+            "eventType": { "const": "operation_recoverable_failure" },
+            "toState": { "const": "memory_candidate_review" }
+          }
+        }
+      ]
+    },
+    "TransitionMemoryCandidateReviewMemoryCommitted": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RuntimeTransitionBase"
+        },
+        {
+          "properties": {
+            "fromState": { "const": "memory_candidate_review" },
+            "eventType": { "const": "memory_committed" },
+            "toState": { "const": "memory_committed" }
+          }
+        }
+      ]
+    },
+    "TransitionMemoryCandidateReviewMemoryIgnored": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RuntimeTransitionBase"
+        },
+        {
+          "properties": {
+            "fromState": { "const": "memory_candidate_review" },
+            "eventType": { "const": "memory_ignored" },
+            "toState": { "const": "done" }
+          }
+        }
+      ]
+    },
+    "TransitionMemoryCommittedSessionDone": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RuntimeTransitionBase"
+        },
+        {
+          "properties": {
+            "fromState": { "const": "memory_committed" },
+            "eventType": { "const": "session_done" },
+            "toState": { "const": "done" }
+          }
+        }
+      ]
+    },
+    "TransitionFailedRecoverableRecoveryResumed": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/RuntimeTransitionBase"
+        },
+        {
+          "properties": {
+            "fromState": { "const": "failed_recoverable" },
+            "eventType": { "const": "recovery_resumed" },
+            "toState": { "const": "planning_local" }
+          }
+        }
+      ]
     },
     "RuntimeState": {
       "enum": [
@@ -777,6 +1266,7 @@
     },
     "RuntimeEventType": {
       "enum": [
+        "session_created",
         "intent_loaded",
         "clarification_required",
         "clarification_answered",
@@ -786,6 +1276,8 @@
         "plan_verified",
         "replan_requested",
         "confirmation_ready",
+        "confirmation_accepted",
+        "execution_requested",
         "mock_execution_completed",
         "feedback_captured",
         "memory_candidate_created",
@@ -794,9 +1286,1129 @@
         "memory_decision_rejected",
         "operation_recoverable_failure",
         "recoverable_failure",
+        "recovery_resumed",
+        "session_done",
+        "session_paused",
+        "session_resumed",
+        "session_closed",
+        "recovery_point_created",
+        "rollback_completed",
+        "rollback_failed"
+      ]
+    },
+    "RuntimeTransitionEventType": {
+      "enum": [
+        "intent_loaded",
+        "clarification_required",
+        "clarification_answered",
+        "planning_completed",
+        "tools_researched",
+        "plans_merged",
+        "plan_verified",
+        "replan_requested",
+        "confirmation_ready",
+        "confirmation_accepted",
+        "mock_execution_completed",
+        "feedback_captured",
+        "memory_candidate_created",
+        "memory_ignored",
+        "memory_committed",
+        "memory_decision_rejected",
+        "operation_recoverable_failure",
+        "recoverable_failure",
+        "recovery_resumed",
         "session_done"
       ]
+    },
+    "RuntimeCoreContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contractVersion",
+        "role",
+        "owns",
+        "doesNotOwn",
+        "p0Capabilities",
+        "uiBoundary"
+      ],
+      "properties": {
+        "contractVersion": {
+          "const": "v4-product-grade-headless-runtime-1"
+        },
+        "role": {
+          "const": "headless_runtime_core"
+        },
+        "owns": {
+          "type": "array",
+          "minItems": 5,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "session_lifecycle",
+              "state_machine",
+              "runtime_events",
+              "persistence",
+              "recovery_points",
+              "failure_classification",
+              "rollback_primitive"
+            ]
+          }
+        },
+        "doesNotOwn": {
+          "type": "array",
+          "minItems": 4,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "ui_cards",
+              "ui_buttons",
+              "ui_layout",
+              "frontend_interactions",
+              "external_real_execution",
+              "public_collaboration",
+              "payment_or_booking_platforms"
+            ]
+          }
+        },
+        "p0Capabilities": {
+          "type": "array",
+          "minItems": 7,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/RuntimeCapabilityName"
+          }
+        },
+        "uiBoundary": {
+          "const": "ui_must_use_runtime_adapter_capability_contract_and_event_contract"
+        }
+      }
+    },
+    "RuntimeAdapterContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "adapterVersion",
+        "role",
+        "methods",
+        "returnsUiFields",
+        "stableAcrossUi"
+      ],
+      "properties": {
+        "adapterVersion": {
+          "const": "v4-runtime-adapter-1"
+        },
+        "role": {
+          "const": "stable_ui_agnostic_runtime_access"
+        },
+        "methods": {
+          "type": "array",
+          "minItems": 8,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/RuntimeAdapterMethod"
+          }
+        },
+        "returnsUiFields": {
+          "const": false
+        },
+        "stableAcrossUi": {
+          "const": true
+        }
+      }
+    },
+    "RuntimeAdapterMethod": {
+      "enum": [
+        "create_session",
+        "get_session",
+        "submit_event",
+        "pause_session",
+        "resume_session",
+        "close_session",
+        "list_events",
+        "get_capabilities",
+        "create_recovery_point",
+        "rollback_to_recovery_point"
+      ]
+    },
+    "RuntimeCapabilityContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capabilityVersion",
+        "targetCapabilities",
+        "effectiveCapabilities",
+        "targetStatusValues",
+        "effectiveAvailabilityValues",
+        "uiDependency",
+        "effectiveCapabilitiesAreAuthoritative"
+      ],
+      "properties": {
+        "capabilityVersion": {
+          "const": "v4-runtime-capabilities-3"
+        },
+        "targetCapabilities": {
+          "type": "array",
+          "minItems": 7,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/TargetRuntimeCapability"
+          }
+        },
+        "effectiveCapabilities": {
+          "type": "array",
+          "minItems": 7,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/EffectiveRuntimeCapability"
+          }
+        },
+        "targetStatusValues": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/RuntimeTargetCapabilityStatus"
+          }
+        },
+        "effectiveAvailabilityValues": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/RuntimeCapabilityAvailability"
+          }
+        },
+        "uiDependency": {
+          "const": false
+        },
+        "effectiveCapabilitiesAreAuthoritative": {
+          "const": true
+        }
+      }
+    },
+    "RuntimeCapabilityName": {
+      "enum": [
+        "session_lifecycle",
+        "state_machine",
+        "event_stream",
+        "persistence",
+        "recovery_point",
+        "rollback_primitive",
+        "runtime_adapter",
+        "capability_query",
+        "contract_tests",
+        "task_replay",
+        "external_compensation"
+      ]
+    },
+    "RuntimeTargetCapabilityStatus": {
+      "enum": [
+        "supported",
+        "degraded",
+        "unsupported"
+      ]
+    },
+    "RuntimeCapabilityAvailability": {
+      "enum": [
+        "available",
+        "degraded",
+        "unavailable"
+      ]
+    },
+    "TargetRuntimeCapability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "status",
+        "version",
+        "limits"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/RuntimeCapabilityName"
+        },
+        "status": {
+          "$ref": "#/$defs/RuntimeTargetCapabilityStatus"
+        },
+        "version": {
+          "const": "v4-p0"
+        },
+        "limits": {
+          "$ref": "#/$defs/RuntimeCapabilityLimits"
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    },
+    "EffectiveRuntimeCapability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "availability",
+        "version",
+        "limits"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/RuntimeCapabilityName"
+        },
+        "availability": {
+          "$ref": "#/$defs/RuntimeCapabilityAvailability"
+        },
+        "version": {
+          "const": "v4-alpha"
+        },
+        "limits": {
+          "$ref": "#/$defs/RuntimeCapabilityLimits"
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    },
+    "RuntimeCapabilityLimits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "latestRecoveryPointOnly": {
+          "type": "boolean"
+        },
+        "externalCompensation": {
+          "type": "boolean"
+        },
+        "taskReplay": {
+          "type": "boolean"
+        }
+      },
+      "default": {}
+    },
+    "RuntimeEventContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "eventVersion",
+        "sourceOfTruth",
+        "schema",
+        "uiMayRender",
+        "uiMayMutate",
+        "mustNotContainUiLayout"
+      ],
+      "properties": {
+        "eventVersion": {
+          "const": "v4-runtime-events-2"
+        },
+        "sourceOfTruth": {
+          "const": "runtime_events"
+        },
+        "schema": {
+          "const": "#/$defs/RuntimeEventEnvelope"
+        },
+        "uiMayRender": {
+          "const": true
+        },
+        "uiMayMutate": {
+          "const": false
+        },
+        "mustNotContainUiLayout": {
+          "const": true
+        }
+      }
+    },
+    "RuntimeLifecycleStatus": {
+      "enum": [
+        "active",
+        "paused",
+        "closed"
+      ]
+    },
+    "PersistedRuntimeSession": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sessionId",
+        "lifecycleStatus",
+        "runtimeState",
+        "version",
+        "lastEventId",
+        "latestRecoveryPointId",
+        "pausedAt",
+        "closedAt",
+        "machineVersion",
+        "schemaVersion",
+        "updatedAt"
+      ],
+      "properties": {
+        "sessionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "lifecycleStatus": {
+          "$ref": "#/$defs/RuntimeLifecycleStatus"
+        },
+        "runtimeState": {
+          "$ref": "#/$defs/RuntimeState"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "lastEventId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "latestRecoveryPointId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pausedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "closedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "machineVersion": {
+          "const": "v4-p0-2"
+        },
+        "schemaVersion": {
+          "const": "v4-runtime-schema-2"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "RuntimeCommandType": {
+      "enum": [
+        "CreateSession",
+        "SubmitClarification",
+        "PauseSession",
+        "ResumeSession",
+        "CloseSession",
+        "CreateRecoveryPoint",
+        "RollbackToRecoveryPoint"
+      ]
+    },
+    "RuntimeCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "commandId",
+        "commandType",
+        "idempotencyKey",
+        "expectedVersion",
+        "payload"
+      ],
+      "properties": {
+        "commandId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "commandType": {
+          "$ref": "#/$defs/RuntimeCommandType"
+        },
+        "sessionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expectedVersion": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "correlationId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "commandType": {
+                "const": "CreateSession"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "sessionId": {
+                "type": "null"
+              },
+              "expectedVersion": {
+                "type": "null"
+              }
+            }
+          },
+          "else": {
+            "required": [
+              "sessionId"
+            ],
+            "properties": {
+              "sessionId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "expectedVersion": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "RuntimeEventEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "eventId",
+        "sessionId",
+        "sequence",
+        "eventVersion",
+        "machineVersion",
+        "type",
+        "actor",
+        "traceId",
+        "createdAt",
+        "payload"
+      ],
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sessionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "eventVersion": {
+          "const": "v4-runtime-events-2"
+        },
+        "machineVersion": {
+          "const": "v4-p0-2"
+        },
+        "commandId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "correlationId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "causationId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "type": {
+          "$ref": "#/$defs/RuntimeEventType"
+        },
+        "runtimeTransition": {
+          "$ref": "#/$defs/RuntimeTransition"
+        },
+        "fromLifecycleStatus": {
+          "$ref": "#/$defs/RuntimeLifecycleStatus"
+        },
+        "toLifecycleStatus": {
+          "$ref": "#/$defs/RuntimeLifecycleStatus"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "actor": {
+          "type": "string",
+          "minLength": 1
+        },
+        "traceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "enum": [
+                  "session_paused",
+                  "session_resumed",
+                  "session_closed"
+                ]
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "fromLifecycleStatus",
+              "toLifecycleStatus",
+              "reason"
+            ],
+            "properties": {
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "oneOf": [
+              {
+                "properties": {
+                  "type": {
+                    "const": "session_paused"
+                  },
+                  "fromLifecycleStatus": {
+                    "const": "active"
+                  },
+                  "toLifecycleStatus": {
+                    "const": "paused"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "type": {
+                    "const": "session_resumed"
+                  },
+                  "fromLifecycleStatus": {
+                    "const": "paused"
+                  },
+                  "toLifecycleStatus": {
+                    "const": "active"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "type": {
+                    "const": "session_closed"
+                  },
+                  "fromLifecycleStatus": {
+                    "const": "active"
+                  },
+                  "toLifecycleStatus": {
+                    "const": "closed"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "type": {
+                    "const": "session_closed"
+                  },
+                  "fromLifecycleStatus": {
+                    "const": "paused"
+                  },
+                  "toLifecycleStatus": {
+                    "const": "closed"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "$ref": "#/$defs/RuntimeTransitionEventType"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "runtimeTransition"
+            ]
+          }
+        }
+      ]
+    },
+    "RuntimeLifecycleTransition": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["fromStatus", "eventType", "toStatus"],
+          "properties": {
+            "fromStatus": { "const": "active" },
+            "eventType": { "const": "session_paused" },
+            "toStatus": { "const": "paused" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["fromStatus", "eventType", "toStatus"],
+          "properties": {
+            "fromStatus": { "const": "paused" },
+            "eventType": { "const": "session_resumed" },
+            "toStatus": { "const": "active" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["fromStatus", "eventType", "toStatus"],
+          "properties": {
+            "fromStatus": { "const": "active" },
+            "eventType": { "const": "session_closed" },
+            "toStatus": { "const": "closed" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["fromStatus", "eventType", "toStatus"],
+          "properties": {
+            "fromStatus": { "const": "paused" },
+            "eventType": { "const": "session_closed" },
+            "toStatus": { "const": "closed" }
+          }
+        }
+      ]
+    },
+    "RuntimeRecoveryPoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "recoveryPointId",
+        "sessionId",
+        "sessionVersion",
+        "runtimeState",
+        "snapshot",
+        "createdAt"
+      ],
+      "properties": {
+        "recoveryPointId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sessionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sessionVersion": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "runtimeState": {
+          "$ref": "#/$defs/RuntimeState"
+        },
+        "snapshot": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "RuntimeAdapterWriteInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sessionId",
+        "expectedVersion",
+        "idempotencyKey"
+      ],
+      "properties": {
+        "sessionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "RuntimeAdapterErrorCode": {
+      "enum": [
+        "session_not_found",
+        "session_paused",
+        "session_closed",
+        "invalid_transition",
+        "version_conflict",
+        "recovery_point_not_found",
+        "rollback_not_supported",
+        "mutually_exclusive_operations"
+      ]
+    },
+    "RuntimeOperationConflictError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ok",
+        "error",
+        "conflictingFields",
+        "recoverable"
+      ],
+      "properties": {
+        "ok": {
+          "const": false
+        },
+        "error": {
+          "const": "mutually_exclusive_operations"
+        },
+        "conflictingFields": {
+          "const": [
+            "feedback",
+            "memoryDecision"
+          ]
+        },
+        "recoverable": {
+          "const": true
+        }
+      }
+    },
+    "RuntimeAdapterError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ok",
+        "error"
+      ],
+      "properties": {
+        "ok": {
+          "const": false
+        },
+        "error": {
+          "$ref": "#/$defs/RuntimeAdapterErrorCode"
+        },
+        "sessionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "expectedVersion": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "actualVersion": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "recoverable": {
+          "type": "boolean"
+        }
+      }
+    },
+    "RuntimeSessionLifecycleContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lifecycleVersion",
+        "statuses",
+        "pausedReadAllowed",
+        "pausedBusinessWriteAllowed",
+        "closedWriteAllowed",
+        "optimisticLockField"
+      ],
+      "properties": {
+        "lifecycleVersion": {
+          "const": "v4-p0"
+        },
+        "statuses": {
+          "const": [
+            "active",
+            "paused",
+            "closed"
+          ]
+        },
+        "pausedReadAllowed": {
+          "const": true
+        },
+        "pausedBusinessWriteAllowed": {
+          "const": false
+        },
+        "closedWriteAllowed": {
+          "const": false
+        },
+        "optimisticLockField": {
+          "const": "expectedVersion"
+        }
+      }
+    },
+    "RuntimePersistenceContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "storage",
+        "databaseStrategy",
+        "tables",
+        "eventAndSessionWriteAtomic",
+        "optimisticLockField",
+        "idempotencyUnique",
+        "rollbackAppendsHistory",
+        "migrateThinTemporarySessions",
+        "runtimeTablesIndependentFromMemorySchema",
+        "eventPayloadAllowlistRequired",
+        "busyTimeoutRequired"
+      ],
+      "properties": {
+        "storage": {
+          "const": "sqlite"
+        },
+        "databaseStrategy": {
+          "const": "existing_sqlite_file_independent_runtime_tables"
+        },
+        "tables": {
+          "const": [
+            "runtime_sessions",
+            "runtime_events",
+            "runtime_recovery_points",
+            "runtime_schema_migrations"
+          ]
+        },
+        "eventAndSessionWriteAtomic": {
+          "const": true
+        },
+        "optimisticLockField": {
+          "const": "version"
+        },
+        "idempotencyUnique": {
+          "const": true
+        },
+        "rollbackAppendsHistory": {
+          "const": true
+        },
+        "migrateThinTemporarySessions": {
+          "const": false
+        },
+        "runtimeTablesIndependentFromMemorySchema": {
+          "const": true
+        },
+        "eventPayloadAllowlistRequired": {
+          "const": true
+        },
+        "busyTimeoutRequired": {
+          "const": true
+        }
+      }
+    },
+    "RuntimeTransitionError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ok",
+        "error",
+        "sessionId",
+        "runtimeState",
+        "allowedEvents"
+      ],
+      "properties": {
+        "ok": {
+          "const": false
+        },
+        "error": {
+          "const": "invalid_transition"
+        },
+        "sessionId": {
+          "type": "string"
+        },
+        "runtimeState": {
+          "$ref": "#/$defs/RuntimeState"
+        },
+        "allowedEvents": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/RuntimeTransitionEventType"
+          }
+        }
+      }
+    },
+    "RuntimeVersionConflictError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ok",
+        "error",
+        "sessionId",
+        "expectedVersion",
+        "actualVersion"
+      ],
+      "properties": {
+        "ok": {
+          "const": false
+        },
+        "error": {
+          "const": "version_conflict"
+        },
+        "sessionId": {
+          "type": "string"
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "actualVersion": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "RuntimeTransitionEngineContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contractVersion",
+        "stateMachineSource",
+        "clientInput",
+        "stateAuthority",
+        "guards",
+        "writeAtomicity",
+        "concurrency",
+        "idempotency",
+        "terminalRules",
+        "replayScope"
+      ],
+      "properties": {
+        "contractVersion": {
+          "const": "v4-transition-engine-p0-1"
+        },
+        "stateMachineSource": {
+          "const": "runtime-state-machine.json"
+        },
+        "clientInput": {
+          "const": "event_intent_via_runtime_adapter"
+        },
+        "stateAuthority": {
+          "const": "persisted_session"
+        },
+        "guards": {
+          "type": "array",
+          "uniqueItems": true,
+          "minItems": 7,
+          "items": {
+            "enum": [
+              "session_exists",
+              "lifecycle_not_closed",
+              "runtime_state_matches_persisted_session",
+              "event_matches_declared_transition",
+              "expected_version_matches",
+              "idempotency_key_is_unique",
+              "recovery_point_belongs_to_session"
+            ]
+          }
+        },
+        "writeAtomicity": {
+          "const": "event_and_session_same_transaction"
+        },
+        "concurrency": {
+          "const": "optimistic_lock_session_version"
+        },
+        "idempotency": {
+          "const": "unique_idempotency_key_per_write"
+        },
+        "terminalRules": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "runtimeStates",
+            "lifecycleStates"
+          ],
+          "properties": {
+            "runtimeStates": {
+              "const": [
+                "done"
+              ]
+            },
+            "lifecycleStates": {
+              "const": [
+                "closed"
+              ]
+            }
+          }
+        },
+        "replayScope": {
+          "const": "event_query_and_latest_recovery_restore_only"
+        }
+      }
     }
+  },
+  "x-stateMachineSource": {
+    "path": "runtime-state-machine.json",
+    "machineVersion": "v4-p0-2",
+    "role": "single_source_of_truth",
+    "generatedArtifacts": [
+      "RuntimeState",
+      "RuntimeEventType",
+      "RuntimeTransitionEventType",
+      "RuntimeTransition",
+      "x-runtimeTransitions",
+      "runtime state-machine documentation",
+      "runtime transition test matrix"
+    ],
+    "ciMustDetectDrift": true
   },
   "x-runtimeTransitions": {
     "intent_loading": [
@@ -849,12 +2461,316 @@
     "done": []
   },
   "x-apiStatus": "thin_runtime_implemented",
+  "x-productGradeP0Status": "contract_frozen_not_implemented",
   "x-frontendMigration": {
     "target": "hybrid_dependency",
     "planningEngine": "agent-core.js",
     "runtimeRole": "state_and_backend_enhancement",
     "noUiSpecificFields": true,
     "planResultInRuntime": false
+  },
+  "x-productGradeHeadlessBoundary": {
+    "runtimeCoreOwns": [
+      "session_lifecycle",
+      "state_machine",
+      "runtime_events",
+      "persistence",
+      "recovery_points"
+    ],
+    "stableAccessContracts": [
+      "RuntimeAdapterContract",
+      "RuntimeCapabilityContract",
+      "RuntimeEventContract"
+    ],
+    "v5UiAccessRule": "V5 UI must access Runtime only through RuntimeAdapter, Capability Contract, and Event Contract.",
+    "runtimeMustNotExpose": [
+      "ui_cards",
+      "ui_buttons",
+      "ui_layout",
+      "frontend_interactions"
+    ]
+  },
+  "x-sessionLifecycleRules": {
+    "businessStateField": "runtimeState",
+    "lifecycleField": "lifecycleStatus",
+    "active": {
+      "pause_session": "paused",
+      "close_session": "closed",
+      "submit_event": "allowed"
+    },
+    "paused": {
+      "resume_session": "active",
+      "close_session": "closed",
+      "submit_event": "session_paused",
+      "read": "allowed"
+    },
+    "closed": {
+      "any_write": "session_closed"
+    },
+    "optimisticLockField": "expectedVersion"
+  },
+  "x-runtimeP0Capabilities": {
+    "capabilityVersion": "v4-runtime-capabilities-3",
+    "targetStatusMeaning": {
+      "supported": "contract_frozen",
+      "degraded": "contract_frozen_with_declared_limits",
+      "unsupported": "contract_frozen_out_of_scope"
+    },
+    "effectiveAvailabilityMeaning": {
+      "available": "implemented_and_callable",
+      "degraded": "partially_callable_with_declared_limits",
+      "unavailable": "not_callable_in_current_runtime"
+    },
+    "targetStatusValues": [
+      "supported",
+      "degraded",
+      "unsupported"
+    ],
+    "effectiveAvailabilityValues": [
+      "available",
+      "degraded",
+      "unavailable"
+    ],
+    "targetCapabilities": [
+      {
+        "name": "session_lifecycle",
+        "status": "supported",
+        "version": "v4-p0",
+        "limits": {}
+      },
+      {
+        "name": "state_machine",
+        "status": "supported",
+        "version": "v4-p0",
+        "limits": {}
+      },
+      {
+        "name": "event_stream",
+        "status": "supported",
+        "version": "v4-p0",
+        "limits": {}
+      },
+      {
+        "name": "persistence",
+        "status": "supported",
+        "version": "v4-p0",
+        "limits": {}
+      },
+      {
+        "name": "recovery_point",
+        "status": "supported",
+        "version": "v4-p0",
+        "limits": {
+          "latestRecoveryPointOnly": true
+        }
+      },
+      {
+        "name": "rollback_primitive",
+        "status": "degraded",
+        "version": "v4-p0",
+        "limits": {
+          "latestRecoveryPointOnly": true,
+          "externalCompensation": false,
+          "taskReplay": false
+        }
+      },
+      {
+        "name": "runtime_adapter",
+        "status": "supported",
+        "version": "v4-p0",
+        "limits": {}
+      },
+      {
+        "name": "capability_query",
+        "status": "supported",
+        "version": "v4-p0",
+        "limits": {}
+      },
+      {
+        "name": "contract_tests",
+        "status": "supported",
+        "version": "v4-p0",
+        "limits": {}
+      },
+      {
+        "name": "task_replay",
+        "status": "unsupported",
+        "version": "v4-p0",
+        "limits": {
+          "taskReplay": false
+        }
+      },
+      {
+        "name": "external_compensation",
+        "status": "unsupported",
+        "version": "v4-p0",
+        "limits": {
+          "externalCompensation": false
+        }
+      }
+    ],
+    "effectiveCapabilities": [
+      {
+        "name": "session_lifecycle",
+        "availability": "unavailable",
+        "version": "v4-alpha",
+        "limits": {},
+        "reason": "No persisted session lifecycle operations are implemented."
+      },
+      {
+        "name": "state_machine",
+        "availability": "degraded",
+        "version": "v4-alpha",
+        "limits": {},
+        "reason": "The thin endpoint emits state-shaped responses but has no persisted Transition Engine."
+      },
+      {
+        "name": "event_stream",
+        "availability": "degraded",
+        "version": "v4-alpha",
+        "limits": {},
+        "reason": "Events exist only in the current response and cannot be queried as a persisted stream."
+      },
+      {
+        "name": "persistence",
+        "availability": "unavailable",
+        "version": "v4-alpha",
+        "limits": {},
+        "reason": "Runtime session, Event, and Recovery Point repositories are not implemented."
+      },
+      {
+        "name": "recovery_point",
+        "availability": "unavailable",
+        "version": "v4-alpha",
+        "limits": {
+          "latestRecoveryPointOnly": true
+        },
+        "reason": "Recovery Point storage and creation are not implemented."
+      },
+      {
+        "name": "rollback_primitive",
+        "availability": "unavailable",
+        "version": "v4-alpha",
+        "limits": {
+          "latestRecoveryPointOnly": true,
+          "externalCompensation": false,
+          "taskReplay": false
+        },
+        "reason": "Rollback execution is not implemented."
+      },
+      {
+        "name": "runtime_adapter",
+        "availability": "unavailable",
+        "version": "v4-alpha",
+        "limits": {},
+        "reason": "The product-grade RuntimeAdapter is a frozen contract only."
+      },
+      {
+        "name": "capability_query",
+        "availability": "unavailable",
+        "version": "v4-alpha",
+        "limits": {},
+        "reason": "No runtime capability query endpoint or adapter method is implemented."
+      },
+      {
+        "name": "contract_tests",
+        "availability": "available",
+        "version": "v4-alpha",
+        "limits": {}
+      },
+      {
+        "name": "task_replay",
+        "availability": "unavailable",
+        "version": "v4-alpha",
+        "limits": {
+          "taskReplay": false
+        }
+      },
+      {
+        "name": "external_compensation",
+        "availability": "unavailable",
+        "version": "v4-alpha",
+        "limits": {
+          "externalCompensation": false
+        }
+      }
+    ],
+    "consumerRule": "Clients must use effectiveCapabilities.availability for enablement. targetCapabilities.status describes contract freeze state only.",
+    "effectiveCapabilitiesAreAuthoritative": true
+  },
+  "x-recoveryPointPolicy": {
+    "retention": "latest_only",
+    "rollbackTarget": "latest_stable_recovery_point",
+    "rollbackCreatesNewVersion": true,
+    "rollbackOverwritesHistory": false,
+    "externalCompensation": false,
+    "taskReplay": false
+  },
+  "x-persistencePolicy": {
+    "storage": "sqlite",
+    "databaseStrategy": "existing_sqlite_file_independent_runtime_tables",
+    "tables": [
+      "runtime_sessions",
+      "runtime_events",
+      "runtime_recovery_points",
+      "runtime_schema_migrations"
+    ],
+    "eventAndSessionWriteAtomic": true,
+    "optimisticLockField": "version",
+    "idempotencyUnique": true,
+    "rollbackAppendsHistory": true,
+    "migrateThinTemporarySessions": false,
+    "runtimeTablesIndependentFromMemorySchema": true,
+    "eventPayloadAllowlistRequired": true,
+    "busyTimeoutRequired": true
+  },
+  "x-compatibilityArchitecture": {
+    "mode": "dual_entry_single_runtime_core",
+    "legacyEntry": "POST /api/runtime",
+    "legacyAdapter": "CompatibilityAdapter",
+    "newEntryPrefix": "/api/runtime/sessions",
+    "newAdapter": "RuntimeAdapter",
+    "singleStateAuthority": "RuntimeCore",
+    "legacyGoldenFixturesRequired": true,
+    "featureFlagControlsCoreAdoption": true,
+    "dualWriteAllowed": false,
+    "rollbackRequiresLegacyPath": true
+  },
+  "x-sessionApi": {
+    "version": "v4-p0-2",
+    "routes": [
+      "POST /api/runtime/sessions",
+      "GET /api/runtime/sessions/{sessionId}",
+      "POST /api/runtime/sessions/{sessionId}/events",
+      "POST /api/runtime/sessions/{sessionId}/pause",
+      "POST /api/runtime/sessions/{sessionId}/resume",
+      "POST /api/runtime/sessions/{sessionId}/close",
+      "GET /api/runtime/sessions/{sessionId}/events",
+      "GET /api/runtime/capabilities"
+    ],
+    "versionStrategy": "explicit_contract_and_machine_versions",
+    "authoritativeResponsesOnly": true
+  },
+  "x-executionBoundary": {
+    "runtimeOwnsTaskStepLifecycle": false,
+    "runtimeP0Owns": [
+      "activeExecutionId",
+      "execution_requested_summary",
+      "execution_completed_summary",
+      "execution_blocked_summary",
+      "execution_cancelled_summary"
+    ],
+    "executionOwns": [
+      "execution_lifecycle",
+      "task_step_definitions",
+      "step_advancement",
+      "attempt_history",
+      "retry_timeout",
+      "mock_execution_results",
+      "cancellation_and_blocking"
+    ],
+    "integration": "stable_adapter_and_authoritative_summary_events",
+    "executionImplementationPhase": "P1"
   },
   "x-mockBoundary": {
     "executionActions": "mock_only",

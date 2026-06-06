@@ -31,11 +31,53 @@ frontend-independent consumption without changing current planning behavior.
 
 | Case | Contract source | Expected result |
 | --- | --- | --- |
+| State-machine fact source | `runtime-state-machine.json` | file is the single source for states, events, transitions, lifecycle, guards, recovery, and replay boundaries |
+| State-machine version | state-machine source and `runtime.schema.json` | approved machine version is `v4-p0-2` |
+| Correct confirmation Event | transition source | `confirmation_accepted` enters `executing_mock_actions`; `mock_execution_completed` does not |
+| Correct execution completion Event | transition source | `mock_execution_completed` enters `feedback_capture`; generic `feedback_captured` does not finish execution |
+| Correct recovery Event | transition source | `recovery_resumed` returns to `planning_local`; `planning_completed` does not represent recovery |
+| Generated state enum | state-machine source and `runtime.schema.json` | `RuntimeState` exactly matches source states |
+| Generated event enum | state-machine source and `runtime.schema.json` | `RuntimeEventType` exactly matches source events |
+| Generated transition schema | state-machine source and `runtime.schema.json` | every source transition has one JSON Schema success branch |
+| Undeclared state combinations | state-machine source and `runtime.schema.json` | every undeclared `(fromState, eventType, toState)` combination fails |
 | Every state is declared | `runtime.schema.json` | all `x-runtimeTransitions` keys are in `RuntimeState.enum` |
 | Every next state is declared | `runtime.schema.json` | all transition targets are in `RuntimeState.enum` |
 | Required transition table | `runtime.schema.json` | transition table equals the fixed V4 plan |
 | Terminal state | `runtime.schema.json` | `done` has no allowed next states |
 | Recoverable failure | `runtime.schema.json` | `failed_recoverable` can only transition to `planning_local` |
+| Lifecycle terminal state | state-machine source | `closed` cannot transition further |
+| Event type mismatch | `RuntimeTransition` | a valid state pair with the wrong Event fails |
+| State source authority | RuntimeAdapter write input and Transition Engine contract | `submit_event` is an intent; clients cannot submit trusted `fromState`; server reads persisted session |
+| Session lifecycle | persisted session and lifecycle rules | create, pause, resume, and close are represented independently of business state |
+| Paused write rejection | lifecycle rules | paused sessions allow reads but reject business advancement with `session_paused` |
+| Closed write rejection | lifecycle rules | closed sessions reject every write with `session_closed` |
+| Optimistic lock | RuntimeAdapter write input and persisted session | stale `expectedVersion` produces `version_conflict` |
+| Write idempotency | RuntimeAdapter write input | the same `idempotencyKey` cannot write twice |
+| Atomic write | Transition Engine contract | Event insertion and session update are in one transaction |
+| Runtime operation exclusivity | `RuntimeRequest` | feedback-only and memoryDecision-only requests are valid; any request containing both fields fails, including null combinations |
+| Lifecycle Event shape | `RuntimeEventEnvelope` | lifecycle Events carry actor, trace, reason, and lifecycle status fields without a fake business transition |
+| Recovery snapshot | `RuntimeRecoveryPoint` | snapshot keeps stable Runtime fields and excludes full UI / raw LLM / large execution data |
+| Rollback append-only | recovery and persistence policies | rollback creates a new version and Event without overwriting history |
+| Target capability status | `targetCapabilities.status` | `supported` means contract frozen; `degraded` means contract frozen with limits; `unsupported` means out-of-scope decision frozen |
+| Effective capability truth | `effectiveCapabilities.availability` | V4 alpha exposes available contract tests, degraded state/Event response behavior, and unavailable persisted Runtime, recovery, rollback, RuntimeAdapter, and capability query |
+| Capability consumer rule | Runtime capability contract | clients enable features only from `effectiveCapabilities`; `targetCapabilities` is planning and acceptance metadata |
+| Persistence tables | persistence policy | P0 adds independent Runtime session, Event, Recovery Point, and Runtime migration tables to the existing SQLite file and does not migrate thin temporary sessions |
+| Dual-entry architecture | compatibility policy | legacy and new APIs delegate to one Runtime Core; CompatibilityAdapter contains no business rules |
+| Legacy golden protection | compatibility policy | legacy `POST /api/runtime` request/response fixtures must pass before rollout |
+| No dual write | compatibility policy | P0 has one authoritative write path and forbids old/new dual writes |
+| Execution ownership | execution boundary | V4 P0 stores only Execution references and summary Events; task/step lifecycle is an independent P1 domain |
+| Replay boundary | state-machine source | P0 supports Event query and latest recovery restore, not business replay |
+
+## V5 Runtime Projection
+
+| Case | Contract source | Expected result |
+| --- | --- | --- |
+| Runtime authority | `RuntimeSummary.runtimeState` | value references `runtime.schema.json#/$defs/RuntimeState` |
+| Display-only phase | `RuntimeSummary.displayPhase` | phase is derived from `x-runtimeStateDisplayMapping` and cannot drive Runtime transitions |
+| Mapping completeness | Runtime and UI schemas | every Runtime state has exactly one display phase mapping |
+| Removed duplicate state | `RuntimeSummary` | `currentState` and UI-owned Runtime state enum are absent |
+| Execution implementation flag | `FeatureFlags` | `executionImplementationRequired` exists and defaults to `false` |
+| Removed old flag | `FeatureFlags` | `executionContractOnly` is absent |
 
 ## POST /api/runtime Responses
 

@@ -143,6 +143,66 @@ slice without overstating full Runtime maturity.
 
 ---
 
+## Phase 10: Product-Grade Headless Runtime P0 Contract Freeze
+
+**Purpose**: Freeze the V4 Runtime P0 state-machine, session, concurrency,
+Command/Event, recovery, and V5 projection boundaries without claiming the
+Transition Engine implementation is complete.
+
+- [x] T042 Add `runtime-state-machine.json` as the single state-machine fact source
+- [x] T043 Add generated / verified Runtime state, Event, and legal transition constraints to `runtime.schema.json`
+- [x] T044 Add persisted session, optimistic lock, idempotent Command, Event envelope, and atomic-write contracts
+- [x] T045 Add Recovery Point and P0 replay-boundary contracts
+- [x] T046 Replace V5 `RuntimeSummary.currentState` with authoritative `runtimeState` plus presentation-only `displayPhase`
+- [x] T047 Rename `executionContractOnly` to `executionImplementationRequired` with default `false`
+- [x] T048 Add drift, legal/illegal transition, terminal-state, concurrency, recovery, and V5 projection contract tests
+- [x] T052 Split Runtime target capabilities from authoritative effective capabilities
+- [ ] T049 Implement SQLite Runtime session / Event / Recovery Point repositories
+- [ ] T050 Implement server-side Transition Engine and atomic Event + session writes
+- [ ] T051 Implement product-grade RuntimeAdapter `submit_event` intent input and persisted session state without breaking the current alpha `/api/runtime`
+
+---
+
+## Phase 11: Approved Product-Grade Runtime P0 Implementation
+
+**Purpose**: Implement the approved dual-entry, single-Core architecture without
+expanding V5 P0 or adding Execution task/step ownership.
+
+- [x] T053 Upgrade the state-machine contract to `v4-p0-2` and correct confirmation, execution-completion, and recovery-resume Event semantics
+- [x] T054 Freeze dual-entry architecture: legacy `POST /api/runtime` through `CompatibilityAdapter`, new `/api/runtime/sessions/*` through `RuntimeAdapter`, one Runtime Core
+- [x] T055 Freeze existing-SQLite strategy with independent Runtime tables and `runtime_schema_migrations`
+- [x] T056 Freeze Runtime/Execution ownership: V4 P0 stores only Execution references and summary Events; task/step lifecycle moves to Execution P1
+- [ ] T057 Freeze legacy `POST /api/runtime` golden request/response fixtures before Core integration
+- [ ] T058 Define versioned Session API DTOs and HTTP error mapping
+- [ ] T059 Implement Runtime repositories, migration runner, busy timeout, unique sequence/idempotency constraints, and payload allowlists
+- [ ] T060 Implement the `v4-p0-2` Transition Engine from `runtime-state-machine.json`
+- [ ] T061 Implement atomic Event + Session writes, optimistic locking, and rollback-on-failure tests
+- [ ] T062 Implement RuntimeAdapter and `/api/runtime/sessions/*` routes
+- [ ] T063 Implement conversion-only CompatibilityAdapter and legacy response projection
+- [ ] T064 Add product-grade Runtime feature flag, disabled by default, with immediate legacy fallback
+- [ ] T065 Add shadow comparison for old/new core results without dual writes
+- [ ] T066 Add capability query backed by effective implementation state
+- [ ] T067 Add restart recovery, duplicate request, concurrency conflict, event ordering, latest Recovery Point, and rollback integration tests
+- [ ] T068 Run legacy golden, V4 contract, backend, and V5 compatibility regression gates
+
+---
+
+## Phase 12: Independent Execution Domain P1
+
+**Purpose**: Implement Execution after the V4 Runtime P0 boundary is stable.
+Execution may start as a separate module in the same FastAPI application; P1
+does not require a separate process or distributed transaction.
+
+- [ ] T069 [P1-A] Define independent Execution model, state machine, repositories, and create/query/advance/cancel API
+- [ ] T070 [P1-B] Add Step Attempt history, failure classification, bounded retry, timeout, idempotency, and plan-version gate
+- [ ] T071 [P1-C] Integrate Execution with Runtime through stable adapters and authoritative summary Events
+- [ ] T072 Add Execution transition, stale-plan rejection, duplicate-advance, retry-limit, cancellation, Mock-boundary, and Runtime-summary consistency tests
+
+Deferred beyond P1: background workers, outbox, distributed scheduling,
+multi-instance execution, and external action compensation.
+
+---
+
 ## Dependencies & Execution Order
 
 - Phase 1 must finish before all other phases.
@@ -153,7 +213,7 @@ slice without overstating full Runtime maturity.
 
 ## Implementation Strategy
 
-This task list records the completed contract work and compatible thin backend
-Runtime slice. Future work must create a new implementation task set before
-migrating frontend planning, candidate generation, replanning, or Mock execution
-from `agent-core.js` / `app.js` into a fuller Runtime state machine.
+This task list records the completed contract work, compatible thin backend
+Runtime slice, approved Runtime P0 implementation tasks, and the separate
+Execution P1 track. V4 Runtime P0 does not migrate Execution task/step ownership
+or bind the Runtime to V5 UI structure.

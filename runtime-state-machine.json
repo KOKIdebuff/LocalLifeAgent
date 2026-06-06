@@ -1,0 +1,513 @@
+{
+  "machineVersion": "v4-p0-2",
+  "schemaVersion": "v4-runtime-schema-2",
+  "description": "Single source of truth for V4 Runtime P0 states, commands, events, lifecycle rules, and legal transitions.",
+  "runtimeStates": [
+    {
+      "name": "intent_loading",
+      "terminal": false
+    },
+    {
+      "name": "clarifying",
+      "terminal": false
+    },
+    {
+      "name": "planning_local",
+      "terminal": false
+    },
+    {
+      "name": "researching_tools",
+      "terminal": false
+    },
+    {
+      "name": "merging_plans",
+      "terminal": false
+    },
+    {
+      "name": "verifying_plan",
+      "terminal": false
+    },
+    {
+      "name": "replanning",
+      "terminal": false
+    },
+    {
+      "name": "ready_for_confirmation",
+      "terminal": false
+    },
+    {
+      "name": "executing_mock_actions",
+      "terminal": false
+    },
+    {
+      "name": "feedback_capture",
+      "terminal": false
+    },
+    {
+      "name": "memory_candidate_review",
+      "terminal": false
+    },
+    {
+      "name": "memory_committed",
+      "terminal": false
+    },
+    {
+      "name": "failed_recoverable",
+      "terminal": false
+    },
+    {
+      "name": "done",
+      "terminal": true
+    }
+  ],
+  "lifecycleStates": [
+    {
+      "name": "active",
+      "terminal": false
+    },
+    {
+      "name": "paused",
+      "terminal": false
+    },
+    {
+      "name": "closed",
+      "terminal": true
+    }
+  ],
+  "commands": [
+    {
+      "name": "CreateSession",
+      "produces": "session_created"
+    },
+    {
+      "name": "SubmitClarification",
+      "produces": "clarification_answered"
+    },
+    {
+      "name": "PauseSession",
+      "produces": "session_paused"
+    },
+    {
+      "name": "ResumeSession",
+      "produces": "session_resumed"
+    },
+    {
+      "name": "CloseSession",
+      "produces": "session_closed"
+    },
+    {
+      "name": "CreateRecoveryPoint",
+      "produces": "recovery_point_created"
+    },
+    {
+      "name": "RollbackToRecoveryPoint",
+      "produces": "rollback_completed"
+    }
+  ],
+  "runtimeEventTypes": [
+    "session_created",
+    "intent_loaded",
+    "clarification_required",
+    "clarification_answered",
+    "planning_completed",
+    "tools_researched",
+    "plans_merged",
+    "plan_verified",
+    "replan_requested",
+    "confirmation_ready",
+    "confirmation_accepted",
+    "execution_requested",
+    "mock_execution_completed",
+    "feedback_captured",
+    "memory_candidate_created",
+    "memory_ignored",
+    "memory_committed",
+    "memory_decision_rejected",
+    "operation_recoverable_failure",
+    "recoverable_failure",
+    "recovery_resumed",
+    "session_done",
+    "session_paused",
+    "session_resumed",
+    "session_closed",
+    "recovery_point_created",
+    "rollback_completed",
+    "rollback_failed"
+  ],
+  "runtimeTransitionEventTypes": [
+    "intent_loaded",
+    "clarification_required",
+    "clarification_answered",
+    "planning_completed",
+    "tools_researched",
+    "plans_merged",
+    "plan_verified",
+    "replan_requested",
+    "confirmation_ready",
+    "confirmation_accepted",
+    "mock_execution_completed",
+    "feedback_captured",
+    "memory_candidate_created",
+    "memory_ignored",
+    "memory_committed",
+    "memory_decision_rejected",
+    "operation_recoverable_failure",
+    "recoverable_failure",
+    "recovery_resumed",
+    "session_done"
+  ],
+  "runtimeTransitions": [
+    {
+      "from": "intent_loading",
+      "event": "clarification_required",
+      "to": "clarifying"
+    },
+    {
+      "from": "intent_loading",
+      "event": "intent_loaded",
+      "to": "planning_local"
+    },
+    {
+      "from": "intent_loading",
+      "event": "recoverable_failure",
+      "to": "failed_recoverable"
+    },
+    {
+      "from": "clarifying",
+      "event": "clarification_answered",
+      "to": "planning_local"
+    },
+    {
+      "from": "planning_local",
+      "event": "planning_completed",
+      "to": "researching_tools"
+    },
+    {
+      "from": "researching_tools",
+      "event": "tools_researched",
+      "to": "merging_plans"
+    },
+    {
+      "from": "merging_plans",
+      "event": "plans_merged",
+      "to": "verifying_plan"
+    },
+    {
+      "from": "verifying_plan",
+      "event": "confirmation_ready",
+      "to": "ready_for_confirmation"
+    },
+    {
+      "from": "verifying_plan",
+      "event": "replan_requested",
+      "to": "replanning"
+    },
+    {
+      "from": "replanning",
+      "event": "plan_verified",
+      "to": "verifying_plan"
+    },
+    {
+      "from": "ready_for_confirmation",
+      "event": "confirmation_accepted",
+      "to": "executing_mock_actions"
+    },
+    {
+      "from": "ready_for_confirmation",
+      "event": "feedback_captured",
+      "to": "feedback_capture"
+    },
+    {
+      "from": "executing_mock_actions",
+      "event": "mock_execution_completed",
+      "to": "feedback_capture"
+    },
+    {
+      "from": "feedback_capture",
+      "event": "operation_recoverable_failure",
+      "to": "feedback_capture"
+    },
+    {
+      "from": "feedback_capture",
+      "event": "memory_candidate_created",
+      "to": "memory_candidate_review"
+    },
+    {
+      "from": "feedback_capture",
+      "event": "session_done",
+      "to": "done"
+    },
+    {
+      "from": "memory_candidate_review",
+      "event": "memory_decision_rejected",
+      "to": "memory_candidate_review"
+    },
+    {
+      "from": "memory_candidate_review",
+      "event": "operation_recoverable_failure",
+      "to": "memory_candidate_review"
+    },
+    {
+      "from": "memory_candidate_review",
+      "event": "memory_committed",
+      "to": "memory_committed"
+    },
+    {
+      "from": "memory_candidate_review",
+      "event": "memory_ignored",
+      "to": "done"
+    },
+    {
+      "from": "memory_committed",
+      "event": "session_done",
+      "to": "done"
+    },
+    {
+      "from": "failed_recoverable",
+      "event": "recovery_resumed",
+      "to": "planning_local"
+    }
+  ],
+  "lifecycleTransitions": [
+    {
+      "from": "active",
+      "event": "session_paused",
+      "to": "paused"
+    },
+    {
+      "from": "paused",
+      "event": "session_resumed",
+      "to": "active"
+    },
+    {
+      "from": "active",
+      "event": "session_closed",
+      "to": "closed"
+    },
+    {
+      "from": "paused",
+      "event": "session_closed",
+      "to": "closed"
+    }
+  ],
+  "guards": [
+    "session_exists",
+    "lifecycle_not_closed",
+    "runtime_state_matches_persisted_session",
+    "event_matches_declared_transition",
+    "expected_version_matches",
+    "idempotency_key_is_unique",
+    "recovery_point_belongs_to_session"
+  ],
+  "p0Rules": {
+    "adapterWriteMethod": "submit_event",
+    "submitEventIsIntentOnly": true,
+    "clientFromStateTrusted": false,
+    "serverReadsStateFromPersistedSession": true,
+    "optimisticLockField": "expectedVersion",
+    "idempotencyField": "idempotencyKey",
+    "eventAndSessionWriteAtomic": true,
+    "invalidTransitionError": "invalid_transition",
+    "versionConflictError": "version_conflict",
+    "terminalRuntimeStates": [
+      "done"
+    ],
+    "terminalLifecycleStates": [
+      "closed"
+    ],
+    "businessReplaySupported": false,
+    "eventHistoryQuerySupported": true,
+    "restoreFromLatestRecoveryPointSupported": true,
+    "pausedReadAllowed": true,
+    "pausedBusinessWriteAllowed": false,
+    "closedWriteAllowed": false,
+    "rollbackCreatesNewVersion": true,
+    "rollbackOverwritesHistory": false
+  },
+  "lifecycleOperationRules": [
+    {
+      "status": "active",
+      "operation": "pause_session",
+      "result": "paused"
+    },
+    {
+      "status": "paused",
+      "operation": "resume_session",
+      "result": "active"
+    },
+    {
+      "status": "active",
+      "operation": "close_session",
+      "result": "closed"
+    },
+    {
+      "status": "paused",
+      "operation": "close_session",
+      "result": "closed"
+    },
+    {
+      "status": "active",
+      "operation": "submit_event",
+      "result": "allowed"
+    },
+    {
+      "status": "paused",
+      "operation": "submit_event",
+      "result": "session_paused"
+    },
+    {
+      "status": "closed",
+      "operation": "any_write",
+      "result": "session_closed"
+    }
+  ],
+  "recoveryPoint": {
+    "retention": "latest_only",
+    "rollbackTarget": "latest_stable_recovery_point",
+    "fields": [
+      "recoveryPointId",
+      "sessionId",
+      "sessionVersion",
+      "runtimeState",
+      "snapshot",
+      "createdAt"
+    ],
+    "creationPoints": [
+      "after_plan_verification",
+      "before_user_confirmation",
+      "before_mock_execution",
+      "before_recoverable_failure_optional"
+    ],
+    "excluded": [
+      "uiContract",
+      "rawLlmOutput",
+      "largeExecutionPayload"
+    ]
+  },
+  "persistence": {
+    "storage": "sqlite",
+    "tables": [
+      "runtime_sessions",
+      "runtime_events",
+      "runtime_recovery_points",
+      "runtime_schema_migrations"
+    ],
+    "databaseStrategy": "existing_sqlite_file_independent_runtime_tables",
+    "eventAndSessionWriteAtomic": true,
+    "optimisticLockField": "version",
+    "idempotencyUnique": true,
+    "rollbackAppendsHistory": true,
+    "migrateThinTemporarySessions": false,
+    "runtimeTablesIndependentFromMemorySchema": true,
+    "eventPayloadAllowlistRequired": true,
+    "busyTimeoutRequired": true
+  },
+  "compatibilityArchitecture": {
+    "mode": "dual_entry_single_runtime_core",
+    "legacyEntry": "POST /api/runtime",
+    "legacyAdapter": "CompatibilityAdapter",
+    "newEntryPrefix": "/api/runtime/sessions",
+    "newAdapter": "RuntimeAdapter",
+    "singleStateAuthority": "RuntimeCore",
+    "legacyGoldenFixturesRequired": true,
+    "featureFlagControlsCoreAdoption": true,
+    "dualWriteAllowed": false,
+    "rollbackRequiresLegacyPath": true
+  },
+  "executionBoundary": {
+    "runtimeOwnsTaskStepLifecycle": false,
+    "runtimeP0Owns": [
+      "activeExecutionId",
+      "execution_requested_summary",
+      "execution_completed_summary",
+      "execution_blocked_summary",
+      "execution_cancelled_summary"
+    ],
+    "executionOwns": [
+      "execution_lifecycle",
+      "task_step_definitions",
+      "step_advancement",
+      "attempt_history",
+      "retry_timeout",
+      "mock_execution_results",
+      "cancellation_and_blocking"
+    ],
+    "integration": "stable_adapter_and_authoritative_summary_events",
+    "executionImplementationPhase": "P1"
+  },
+  "targetCapabilities": [
+    {
+      "name": "session_lifecycle",
+      "status": "supported"
+    },
+    {
+      "name": "state_machine",
+      "status": "supported"
+    },
+    {
+      "name": "event_stream",
+      "status": "supported"
+    },
+    {
+      "name": "persistence",
+      "status": "supported"
+    },
+    {
+      "name": "recovery_point",
+      "status": "supported",
+      "limits": {
+        "latestRecoveryPointOnly": true
+      }
+    },
+    {
+      "name": "rollback_primitive",
+      "status": "degraded",
+      "limits": {
+        "latestRecoveryPointOnly": true,
+        "externalCompensation": false,
+        "taskReplay": false
+      }
+    },
+    {
+      "name": "runtime_adapter",
+      "status": "supported"
+    },
+    {
+      "name": "capability_query",
+      "status": "supported"
+    },
+    {
+      "name": "contract_tests",
+      "status": "supported"
+    },
+    {
+      "name": "task_replay",
+      "status": "unsupported",
+      "limits": {
+        "taskReplay": false
+      }
+    },
+    {
+      "name": "external_compensation",
+      "status": "unsupported",
+      "limits": {
+        "externalCompensation": false
+      }
+    }
+  ],
+  "targetCapabilityStatusMeaning": {
+    "supported": "contract_frozen",
+    "degraded": "contract_frozen_with_declared_limits",
+    "unsupported": "contract_frozen_out_of_scope"
+  },
+  "outOfScope": [
+    "arbitrary_historical_rollback",
+    "full_task_replay",
+    "in_process_execution_state_recovery",
+    "external_action_compensation",
+    "multi_node_runtime",
+    "distributed_event_bus",
+    "multi_level_snapshot_chain",
+    "automatic_cleanup_admin_platform"
+  ]
+}
