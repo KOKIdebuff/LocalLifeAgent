@@ -67,6 +67,7 @@ class ContractSchemaTests(unittest.TestCase):
             "intent.schema.json",
             "feedback-memory.schema.json",
             "runtime.schema.json",
+            "ui-contract.schema.json",
             "runtime-state-machine.json",
         ]:
             with self.subTest(name=name):
@@ -639,6 +640,231 @@ class ContractSchemaTests(unittest.TestCase):
         self.assertEqual(schema["x-frontendMigration"]["planningEngine"], "agent-core.js")
         self.assertEqual(schema["x-frontendMigration"]["runtimeRole"], "state_and_backend_enhancement")
         self.assertFalse(schema["x-frontendMigration"]["planResultInRuntime"])
+
+    def test_v5_candidate_switcher_separates_preview_from_commit(self):
+        schema = load_json("ui-contract.schema.json")
+        contract = schema["$defs"]["P0LocalReplanContract"]
+        state = schema["$defs"]["P0CandidateSwitcherState"]
+        preview = schema["$defs"]["P0CandidatePreview"]
+        adoption = schema["$defs"]["P0AdoptionValidation"]
+        transport_segment = schema["$defs"]["P0TransportRouteSegment"]
+        transport_card = schema["$defs"]["P0TransportCardContract"]
+        extension = schema["x-p0LocalReplanContract"]
+        card_whitelist = schema["x-cardTypeWhitelist"]
+
+        expected_actions = {
+            "preview_previous_candidate",
+            "preview_next_candidate",
+            "adopt_preview_candidate",
+            "restore_original_candidate",
+            "undo_candidate_adoption",
+        }
+
+        self.assertEqual(
+            contract["properties"]["contractVersion"]["const"],
+            "v5-p0-candidate-switcher-1",
+        )
+        self.assertEqual(
+            set(schema["$defs"]["P0CandidateSwitcherActionType"]["enum"]),
+            expected_actions,
+        )
+        self.assertEqual(state["properties"]["candidateRefs"]["maxItems"], 5)
+        self.assertEqual(
+            state["properties"]["historyScope"]["const"],
+            "current_edit_session",
+        )
+        self.assertFalse(preview["properties"]["mainPlanMutated"]["const"])
+        self.assertFalse(preview["properties"]["savedSnapshotMutated"]["const"])
+        self.assertEqual(
+            set(adoption["properties"]["checks"]["items"]["enum"]),
+            {"time", "budget", "risk", "schema"},
+        )
+        self.assertEqual(set(extension["supportedActions"]), expected_actions)
+        self.assertFalse(extension["compatibilityPolicy"]["mayMutateMain"])
+        self.assertEqual(
+            extension["compatibilityPolicy"]["deletionGate"],
+            "user_personally_experienced_and_explicitly_approved_removal",
+        )
+        self.assertTrue(extension["transportRouteSegment"]["standaloneCard"])
+        self.assertEqual(
+            set(transport_segment["required"]),
+            {
+                "routeSegmentId",
+                "fromRef",
+                "toRef",
+                "candidateTransportRefs",
+                "currentPreviewCandidateRef",
+                "originalCandidateRef",
+                "adoptedCandidateRef",
+                "timeDeltaMinutes",
+                "budgetDelta",
+                "congestionRisk",
+                "walkingRisk",
+                "transferRisk",
+                "affectedDownstreamTimelineRefs",
+                "mainPlanMutated",
+                "savedSnapshotMutated",
+            },
+        )
+        self.assertFalse(
+            transport_segment["properties"]["mainPlanMutated"]["const"],
+        )
+        self.assertFalse(
+            transport_segment["properties"]["savedSnapshotMutated"]["const"],
+        )
+        self.assertEqual(
+            transport_card["properties"]["routeSegment"]["$ref"],
+            "#/$defs/P0TransportRouteSegment",
+        )
+        main_card_types = {
+            item["type"] for item in card_whitelist["p0MainRenderTypes"]
+        }
+        deferred_card_types = {
+            item["type"] for item in card_whitelist["p0DeferredTypes"]
+        }
+        self.assertIn("transport", main_card_types)
+        self.assertNotIn("transport", deferred_card_types)
+        self.assertEqual(card_whitelist["whitelistVersion"], "v5-p0-card-types-2")
+        self.assertIn(
+            "candidate_switcher_preview",
+            schema["$defs"]["BackendCapabilityName"]["enum"],
+        )
+        self.assertIn(
+            "candidate_load_failed",
+            schema["$defs"]["StrictErrorCode"]["enum"],
+        )
+        self.assertIn(
+            "candidate_adoption_validation_failed",
+            schema["$defs"]["StrictErrorCode"]["enum"],
+        )
+
+    def test_v5_saved_plan_lifecycle_contract_is_frozen(self):
+        schema = load_json("ui-contract.schema.json")
+        contract = schema["$defs"]["SavedPlanLifecycleContract"]
+        saved_snapshot = schema["$defs"]["SavedPlanSnapshot"]
+        selected_plan = schema["$defs"]["SelectedPlanSnapshotPayload"]
+        candidate = schema["$defs"]["CandidatePlanSummary"]
+        replan = schema["$defs"]["PlanDetailReplanPolicy"]
+        reopen = schema["$defs"]["SavedPlanReopenPolicy"]
+        collaboration = schema["$defs"]["CollaboratorSuggestionPolicy"]
+        branch_policy = schema["$defs"]["SavedPlanBranchPolicy"]
+        branch_record = schema["$defs"]["PlanBranchRecord"]
+        suggestion = schema["$defs"]["CollaboratorSuggestionRecord"]
+        audit_events = set(schema["$defs"]["AuditEventType"]["enum"])
+        extension = schema["x-savedPlanLifecycleContract"]
+
+        self.assertEqual(
+            contract["properties"]["contractVersion"]["const"],
+            "v5-plan-lifecycle-1",
+        )
+        self.assertEqual(
+            contract["properties"]["savePolicy"]["properties"]["fullPayload"]["const"],
+            "selected_plan_only",
+        )
+        self.assertEqual(
+            contract["properties"]["savePolicy"]["properties"]["candidatePayload"]["const"],
+            "lightweight_summary_only",
+        )
+        self.assertIn("selectedPlan", saved_snapshot["required"])
+        self.assertIn("candidateSummaries", saved_snapshot["required"])
+        self.assertTrue(
+            {"cards", "entities", "timeline", "actions"}.issubset(
+                selected_plan["required"],
+            ),
+        )
+        self.assertFalse(candidate["additionalProperties"])
+        self.assertEqual(
+            set(candidate["properties"]),
+            {"planRef", "name", "score", "recommended", "rank"},
+        )
+        self.assertTrue(replan["properties"]["newVersionPerCommit"]["const"])
+        self.assertTrue(replan["properties"]["stableUnaffectedRefs"]["const"])
+        self.assertTrue(replan["properties"]["lockedSuccessBlocks"]["const"])
+        self.assertEqual(
+            set(replan["properties"]["supportedBlockTypes"]["items"]["enum"]),
+            {"activity", "restaurant", "timeline", "transport"},
+        )
+        self.assertEqual(
+            reopen["properties"]["mode"]["const"],
+            "execution_aware_block_refresh",
+        )
+        self.assertFalse(reopen["properties"]["autoOverwriteSavedPlan"]["const"])
+        self.assertFalse(
+            collaboration["properties"]["collaboratorCanMutateSnapshot"]["const"],
+        )
+        self.assertFalse(
+            collaboration["properties"]["collaboratorCanExecute"]["const"],
+        )
+        self.assertEqual(
+            collaboration["properties"]["adoptionOutput"]["const"],
+            "new_main_version_via_derived_branch",
+        )
+        self.assertTrue(branch_policy["properties"]["singleActiveMain"]["const"])
+        self.assertEqual(branch_policy["properties"]["maxActiveDerived"]["const"], 3)
+        self.assertFalse(
+            branch_policy["properties"]["arbitraryMergeAllowed"]["const"],
+        )
+        self.assertTrue(branch_policy["properties"]["atomicAdoption"]["const"])
+        self.assertTrue(
+            {
+                "parentVersion",
+                "baseVersion",
+                "createdBy",
+            }.issubset(branch_record["required"]),
+        )
+        self.assertEqual(
+            set(suggestion["required"]),
+            {
+                "suggestionId",
+                "shareId",
+                "sourceSnapshotId",
+                "baseVersion",
+                "targetRef",
+                "createdBy",
+                "createdAt",
+                "idempotencyKey",
+                "kind",
+                "status",
+            },
+        )
+        self.assertFalse(suggestion["additionalProperties"])
+        self.assertTrue(
+            {
+                "saved_plan_created",
+                "saved_plan_reopened",
+                "plan_replan_committed",
+                "plan_replan_undone",
+                "collaborator_suggestion_created",
+                "collaborator_suggestion_adopted",
+                "collaborator_suggestion_rejected",
+                "plan_branch_created",
+                "plan_branch_adopted",
+                "plan_branch_rejected",
+                "main_branch_rolled_back",
+            }.issubset(audit_events),
+        )
+        self.assertEqual(
+            extension["reopenPolicy"]["stepRules"],
+            {
+                "success": "readonly_execution_snapshot",
+                "pending": "refresh_latest_mock_state",
+                "failed_recoverable": "refresh_and_offer_alternative",
+                "cancelled": "allow_replan",
+                "skipped": "preserve_and_allow_manual_refresh",
+            },
+        )
+        self.assertIn(
+            {"$ref": "#/$defs/SavedPlanLifecycleContract"},
+            schema["oneOf"],
+        )
+        self.assertIn(
+            {"$ref": "#/$defs/SavedPlanSnapshot"},
+            schema["oneOf"],
+        )
+        self.assertIn(
+            {"$ref": "#/$defs/CollaboratorSuggestionRecord"},
+            schema["oneOf"],
+        )
 
     def test_runtime_contract_documents_hybrid_frontend_rule(self):
         contract = (ROOT / "specs/001-v4-runtime-state-machine-memory-loop/contracts/runtime-memory-contract.md").read_text(
