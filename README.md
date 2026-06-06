@@ -1,6 +1,6 @@
-# 本地生活执行 Agent Demo
+# 本地生活执行 Agent
 
-这是一个以本地 Mock 数据为主的执行型 Agent Demo。默认可以作为静态 Web Demo 运行，用模拟工具展示“周末吃喝玩乐一键安排”的执行闭环；仓库中也包含一套可选的后端增强链路，用于实验性接入意图识别、反馈复盘和结构化记忆能力。
+这是一个以本地 Mock 数据为主的产品原型。默认可以作为静态 Web Demo 运行，用模拟工具展示“周末吃喝玩乐一键安排”的执行闭环；仓库中也包含一套可选的后端增强链路，用于实验性接入意图识别、反馈复盘和结构化记忆能力。
 
 项目不接入真实商业平台，不做真实支付、真实下单或真实消息发送。
 
@@ -22,7 +22,13 @@
 
 因此，对外不要说项目已经接入真实地图、真实餐厅库存或真实生活服务 API；更稳妥的表达是：项目保留未来接入真实 API 的工具接口形态，但当前演示使用可控 Mock 来保证现场稳定性。
 
-后续目标按偏产品化方案推进：
+后续目标按轻量里程碑推进：
+
+- Demo：主链路稳定、模拟执行可信、演示口径一致。
+- Alpha：补齐契约、低置信度 Runtime 降级、请求互斥规则、记忆引用记录说明和基础测试。`feedback` 与 `memoryDecision` 都保留，但同一请求只能出现一个字段；同时出现时返回可恢复的 `mutually_exclusive_operations`。
+- Beta：推进 V4 Product-grade Headless Runtime，以及 V5 Generative UI、本地真实协同状态、执行队列和可回滚方案分支。
+
+产品化数据目标保留为后续 Beta 方向：
 
 - 热门城市 POI 种子库覆盖 30 个以上城市。
 - 每个城市、每类地点准备 5 个以上真实 POI。
@@ -34,12 +40,12 @@
 
 1. 用户输入一句自然语言生活目标。
 2. Planner / Orchestrator 识别时间、同行关系、人数、偏好、预算、距离和体力限制。
-3. 信息不足时先追问，不默认亲子、朋友或情侣。
+3. 普通模糊输入优先用可解释假设继续生成方案；关键安全、同行或时间约束不足时，必须通过假设提示、软追问或保守降级避免盲目执行。
 4. Researchers 以逻辑并行研究通道组织 Mock 工具：天气路线、活动、餐厅、订座排队团购。
 5. Merger 生成 2-3 个候选服务包，并推荐最稳方案。
 6. Verifier 检查时间、距离、预算、预约可用性和高影响动作确认。
 7. Revise 在下雨、餐厅满座、孩子累了、预算太高、活动无票或人数变化时触发重排。
-8. 用户确认后，模拟执行订座、排队、买票、买团购、下单加购、发消息和提醒。
+8. 用户确认后，模拟执行订座、排队、买票、买团购、下单加购、发消息和提醒；UI 可使用“执行/成功”表达流程推进，但文档、讲解和审计口径统一解释为“模拟执行/模拟成功”。
 
 `agentLoopTrace` 是轻量可解释编排。核心规划底层仍是单 Orchestrator + 本地 Mock Tools，不做真实多 Agent 并发，也不接入真实平台能力。
 
@@ -68,7 +74,7 @@
 
 ## 下一阶段路线图
 
-下一阶段目标不是引入重型多 Agent 框架，也不是依赖任何非官方泄露源码，而是在现有基础上把可选后端能力继续收敛成更稳定的轻量 Agent Runtime。推荐目标栈为 LangGraph 轻量编排 + FastAPI + 本地 Mock 数据库 + 可配置真实 LLM，其中 LangGraph 只负责流程调度和状态流转，核心业务逻辑仍保持自研、清晰和可测试。
+下一阶段目标不是引入重型多 Agent 框架，也不是依赖任何非官方泄露源码，而是在现有基础上把 V4 升级为 Product-grade Headless Runtime。当前 V4 代码实现仍是无状态薄聚合；V4 Runtime P0 将持久化 session、通过 Transition Engine 校验状态转移，并提供事件、恢复点和稳定适配契约。V5 只通过 RuntimeAdapter、RuntimeCapabilityContract 和 RuntimeEventContract 消费 Runtime，不在浏览器中运行 Runtime 状态机。推荐目标栈为 LangGraph 轻量编排 + FastAPI + 本地 Mock 数据库 + 可配置真实 LLM，其中核心业务逻辑仍保持自研、清晰和可测试。
 
 当前已引入可选 LangGraph 作为 V4 alpha 后端轻量编排层，主要包裹意图识别与校验；`POST /api/runtime` 在此基础上提供薄层状态与后端增强结果聚合，不承载前端规划、候选生成或模拟执行。核心业务逻辑仍由项目自研实现。LangGraph trace 只保留在后端日志或审计记录中，不映射到前端 `agentLoopTrace`。接入边界见 `LANGGRAPH_INTEGRATION.md`。
 
@@ -188,6 +194,7 @@ node --check .\tests.js
 - `test_contract_schemas.py`：契约文件与 Runtime 状态转移表测试。
 - `test_runtime_api.py`：薄层 Runtime API 行为测试。
 - `DESIGN.md`：规划策略、工具调用和 V4 alpha 结构设计说明。
+- `V5_GENERATIVE_UI_COLLABORATION_PLAN.md`：V5 Generative UI、UI Contract、fallback、本地真实协同和模拟执行生命周期的 P0 契约文档；不代表外部真实执行、公网协同、真实身份、支付、订座或消息平台已实现。
 - `LANGGRAPH_INTEGRATION.md`：LangGraph 作为后端轻量编排层的接入边界说明。
 - `DEMO_SCRIPT.md`：3 分钟比赛讲解稿。
 - `progress.md`：当前阶段进度与验证状态。
