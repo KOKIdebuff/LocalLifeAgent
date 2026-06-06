@@ -3,130 +3,259 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>美团闲时消费执行 Agent Demo</title>
-    <link rel="stylesheet" href="styles.css">
+    <title>周末生活 Agent 工作台</title>
+    <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
-    <main class="app-shell">
-      <section class="workspace" aria-label="美团闲时消费执行 Agent">
-        <header class="topbar">
+    <header class="app-header">
+      <a class="brand-lockup" href="/" aria-label="周末生活 Agent 首页" data-route-link="/">
+        <span class="brand-mark material-symbols-rounded" aria-hidden="true">route</span>
+        <span>
+          <strong>周末生活 Agent</strong>
+          <small>LOCAL LIFE WORKBENCH</small>
+        </span>
+      </a>
+      <nav class="top-nav" aria-label="工作台导航">
+        <button class="nav-item active" type="button" data-route-link="/">工作台</button>
+        <button class="nav-item" type="button" data-route-link="/saved-plans">已保存方案</button>
+        <button class="nav-item" type="button" data-agent-tab-target="execution">执行记录</button>
+        <button class="nav-item" type="button" data-agent-tab-target="memory">反馈记忆</button>
+      </nav>
+      <div class="header-tools">
+        <span class="runtime-indicator"><i></i>Agent 在线</span>
+        <button class="icon-btn" type="button" aria-label="打开 Agent 面板" data-agent-open>
+          <span class="material-symbols-rounded" aria-hidden="true">right_panel_open</span>
+        </button>
+        <img class="user-avatar" src="/assets/workbench/avatar.jpg" alt="用户头像">
+      </div>
+    </header>
+
+    <main id="workbench-home" class="workbench-main" data-route-view="home">
+      <section class="command-section" aria-labelledby="workbench-title">
+        <div class="command-heading">
           <div>
-            <p class="eyebrow">Meituan Weekend Life Agent</p>
-            <h1>从一句话到可执行服务包</h1>
-            <p class="hero-subtitle">说清楚今天想怎么过，系统会整理出路线、活动、吃饭、订座和通知，确认后再帮你模拟执行。</p>
+            <p class="eyebrow">WEEKEND PLANNING COMMAND</p>
+            <h1 id="workbench-title">今天想怎么过？</h1>
+            <p>告诉我同行的人、时间和偏好，我会把路线、吃喝玩乐和执行步骤安排好。</p>
           </div>
-        </header>
+          <div class="flow-hint" aria-label="演示流程">
+            <span>理解需求</span><i></i><span>比较方案</span><i></i><span>确认执行</span>
+          </div>
+        </div>
 
-        <section class="input-panel" aria-label="输入需求">
-          <div class="input-header">
-            <label for="goal-input">小明收到消息后，只用一句话交代目标</label>
-            <span id="input-hint">缺同行关系会先追问；确认后生成可执行服务包。</span>
+        <section class="command-box" aria-label="输入需求">
+          <div class="command-input-row">
+            <span class="material-symbols-rounded command-icon" aria-hidden="true">auto_awesome</span>
+            <textarea id="goal-input" rows="3" aria-describedby="input-hint">周六下午想和老婆孩子出去玩 4 小时，孩子 5 岁，别离家太远，老婆最近在减肥，帮我把玩的、吃的、订座和通知都安排好。</textarea>
+            <div class="command-actions">
+              <button id="reset-btn" class="icon-btn command-reset" type="button" aria-label="重置需求">
+                <span class="material-symbols-rounded" aria-hidden="true">restart_alt</span>
+              </button>
+              <button id="generate-btn" class="primary-btn" type="button">
+                <span class="material-symbols-rounded" aria-hidden="true">arrow_forward</span>
+                生成方案
+              </button>
+            </div>
           </div>
-          <textarea id="goal-input" rows="4" aria-describedby="input-hint">周六下午想和老婆孩子出去玩 4 小时，孩子 5 岁，别离家太远，老婆最近在减肥，帮我把玩的、吃的、订座和通知都安排好。</textarea>
-          <div class="input-actions">
-            <button id="generate-btn" class="primary-btn" type="button">生成方案</button>
-            <button id="reset-btn" class="ghost-btn" type="button">重置</button>
-          </div>
-          <div class="sample-row" aria-label="示例输入">
-            <button class="sample-btn" type="button" data-sample="weekend">亲子主线</button>
-            <button class="sample-btn" type="button" data-sample="friends">朋友无座</button>
-            <button class="sample-btn" type="button" data-sample="rain">雨天重排</button>
-            <button class="sample-btn" type="button" data-sample="soldout">景点无票</button>
-            <button class="sample-btn" type="button" data-sample="partyChanged">人数变化</button>
-            <button class="sample-btn" type="button" data-sample="missing">信息不足</button>
-            <button class="sample-btn" type="button" data-sample="conflict">约束冲突</button>
-          </div>
-          <div class="demo-flow" aria-label="演示流程">
-            <span>说需求</span>
-            <span>看方案</span>
-            <span>换备选</span>
-            <span>确认执行</span>
-            <span>发给家人朋友</span>
+          <div class="command-footer">
+            <div class="sample-row" aria-label="示例输入">
+              <span id="input-hint">快速场景</span>
+              <button class="sample-btn" type="button" data-sample="weekend">亲子周末</button>
+              <button class="sample-btn" type="button" data-sample="friends">朋友聚会</button>
+              <button class="sample-btn" type="button" data-sample="rain">雨天重排</button>
+              <button class="sample-btn" type="button" data-sample="soldout">活动售罄</button>
+              <button class="sample-btn" type="button" data-sample="partyChanged">人数变化</button>
+              <button class="sample-btn" type="button" data-sample="missing">信息不足</button>
+              <button class="sample-btn" type="button" data-sample="conflict">约束冲突</button>
+            </div>
+            <span class="privacy-note"><span class="material-symbols-rounded" aria-hidden="true">lock</span>仅用于本次规划</span>
           </div>
         </section>
+      </section>
 
-        <section id="clarification-panel" class="notice-panel hidden" aria-live="polite"></section>
+      <section id="clarification-panel" class="notice-panel hidden" aria-live="polite"></section>
 
-        <section class="stage-panel" aria-label="Agent 执行阶段">
-          <div id="agent-stages" class="agent-stages"></div>
-        </section>
+      <section class="requirements-section" aria-labelledby="requirements-title">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">需求理解</p>
+            <h2 id="requirements-title">我的需求明细</h2>
+          </div>
+          <span id="parse-status" class="status-label">等待输入</span>
+        </div>
+        <div id="understanding" class="requirements-card empty-state">输入需求后会展示识别出的时间、同行人、人数和偏好。</div>
+      </section>
 
-        <section class="grid-layout cockpit-layout">
-          <aside class="left-column">
-            <section class="panel">
-              <div class="section-title">
-                <span>理解结果</span>
-                <small id="parse-status">等待输入</small>
-              </div>
-              <div id="understanding" class="kv-list empty-state">输入需求后会展示识别出的时间、同行人、人数和偏好。</div>
-            </section>
+      <section class="content-section" aria-labelledby="plans-title">
+        <div class="section-heading plan-section-heading">
+          <div>
+            <p class="section-kicker">方案比较</p>
+            <h2 id="plans-title">为你生成的周末提案</h2>
+          </div>
+          <div class="section-heading-actions">
+            <button id="open-selected-plan" class="secondary-btn" type="button" disabled>查看行程详情</button>
+            <span id="plan-count" class="status-label">0 个方案</span>
+          </div>
+        </div>
+        <div id="replan-events" class="replan-list empty-state">生成方案后可模拟下雨、满座、孩子累了或预算过高。</div>
+        <div id="plans" class="plan-list empty-state">这里会展示 2-3 个可执行方案。</div>
+      </section>
 
-            <section class="panel">
-              <div class="section-title">
-                <span>动态重排</span>
-                <small>模拟突发变化</small>
-              </div>
-              <div id="replan-events" class="replan-list empty-state">生成方案后可模拟下雨、满座、孩子累了或预算太高。</div>
-            </section>
-          </aside>
-
-          <section class="center-column">
-            <section class="panel">
-              <div class="section-title">
-                <span>候选方案</span>
-                <small id="plan-count">0 个</small>
-              </div>
-              <div id="plans" class="plan-list empty-state">这里会展示 2-3 个可执行方案。</div>
-            </section>
-          </section>
-
-          <aside class="order-column">
-            <section class="panel">
-              <div class="section-title">
-                <span>美团服务包</span>
-                <small>确认后执行</small>
-              </div>
-              <div id="service-package" class="service-package empty-state">选择方案后会展示闲时指标、团购套餐和加购动作。</div>
-            </section>
-
-            <section class="panel">
-              <div class="section-title">
-                <span>执行队列</span>
-                <small id="queue-status">待选择方案</small>
-              </div>
-              <div id="execution-queue" class="queue-list empty-state">选择方案后会生成预约、下单、消息和提醒动作。</div>
-              <div class="queue-actions">
-                <button id="execute-btn" class="primary-btn" type="button" disabled>确认并执行选中方案</button>
-              </div>
-            </section>
-
-            <section id="result-panel" class="panel hidden">
-              <div class="section-title">
-                <span>最终安排</span>
-                <small>已模拟执行</small>
-              </div>
-              <div id="final-summary" class="summary-box"></div>
-            </section>
-
-            <section id="feedback-panel" class="panel">
-              <div class="section-title">
-                <span>复盘记忆</span>
-                <small>候选后确认</small>
-              </div>
-              <div class="feedback-box">
-                <label for="feedback-input">纠错或反馈</label>
-                <textarea id="feedback-input" rows="3" placeholder="例如：这个安排太赶了，下次亲子局每天只安排 1-2 个核心点。"></textarea>
-                <button id="feedback-submit" class="ghost-btn" type="button">生成记忆候选</button>
-                <p id="feedback-status" class="feedback-status"></p>
-                <div id="feedback-lesson" class="memory-candidate hidden"></div>
-              </div>
-            </section>
-          </aside>
-        </section>
+      <section class="service-section" aria-labelledby="service-title">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">选中方案</p>
+            <h2 id="service-title">服务与执行摘要</h2>
+          </div>
+        </div>
+        <div id="service-package" class="service-package empty-state">选择方案后会展示闲时指标、团购套餐和加购动作。</div>
       </section>
     </main>
 
-    <script src="agent-core.js"></script>
-    <script src="app.js"></script>
+    <main id="route-page" class="workbench-main route-page hidden" data-route-view="secondary">
+      <nav class="route-breadcrumb" aria-label="页面路径">
+        <button class="ghost-link" type="button" data-route-link="/">工作台</button>
+        <span>/</span>
+        <span id="route-breadcrumb-current">行程详情</span>
+      </nav>
+      <section class="route-hero">
+        <div>
+          <p id="route-kicker" class="eyebrow">PLAN LIFECYCLE</p>
+          <h1 id="route-title">行程详情</h1>
+          <p id="route-subtitle">查看当前稳定版本，局部调整后再保存。</p>
+        </div>
+        <div id="route-primary-actions" class="route-primary-actions"></div>
+      </section>
+      <section id="route-notice" class="route-notice hidden" aria-live="polite"></section>
+      <section id="route-content" class="route-content"></section>
+    </main>
+
+    <aside class="agent-rail" aria-label="Agent 助手侧栏">
+      <div class="agent-rail-header">
+        <div class="agent-identity">
+          <span class="agent-orb material-symbols-rounded" aria-hidden="true">auto_awesome</span>
+          <div><strong>生活 Agent</strong><small>正在协助本次规划</small></div>
+        </div>
+        <button class="icon-btn agent-close" type="button" aria-label="关闭 Agent 面板" data-agent-close>
+          <span class="material-symbols-rounded" aria-hidden="true">close</span>
+        </button>
+      </div>
+      <div class="agent-tabs" role="tablist" aria-label="Agent 状态">
+        <button class="agent-tab active" type="button" role="tab" aria-selected="true" data-agent-tab="process">过程</button>
+        <button class="agent-tab" type="button" role="tab" aria-selected="false" data-agent-tab="execution">执行</button>
+        <button class="agent-tab" type="button" role="tab" aria-selected="false" data-agent-tab="memory">记忆</button>
+      </div>
+
+      <div class="agent-panel active" data-agent-panel="process">
+        <div class="rail-section-title">
+          <span>Agent 推理过程</span>
+          <small>实时更新</small>
+        </div>
+        <div id="agent-stages" class="agent-stages"></div>
+      </div>
+
+      <div class="agent-panel" data-agent-panel="execution">
+        <div class="rail-section-title">
+          <span>执行队列</span>
+          <small id="queue-status">待选择方案</small>
+        </div>
+        <div id="execution-queue" class="queue-list empty-state">选择方案后会生成预约、下单、消息和提醒动作。</div>
+        <div class="queue-actions">
+          <button id="execute-btn" class="primary-btn full-width" type="button" disabled>确认并执行选中方案</button>
+        </div>
+        <section id="result-panel" class="rail-result hidden">
+          <div class="rail-section-title"><span>最终安排</span><small>模拟执行结果</small></div>
+          <div id="final-summary" class="summary-box"></div>
+        </section>
+      </div>
+
+      <div class="agent-panel" data-agent-panel="memory">
+        <div class="memory-intro">
+          <span class="material-symbols-rounded" aria-hidden="true">psychology</span>
+          <h3>让 Agent 更懂你</h3>
+          <p>确认或纠正候选记忆。只有你采纳后，它才会用于后续规划。</p>
+        </div>
+        <button id="feedback-open-btn" class="secondary-btn full-width" type="button">提交本次反馈</button>
+        <section id="feedback-panel" class="memory-panel">
+          <p id="feedback-status" class="feedback-status">暂无待处理反馈。</p>
+          <div id="feedback-lesson" class="memory-candidate hidden"></div>
+        </section>
+      </div>
+    </aside>
+
+    <button class="agent-mobile-trigger" type="button" data-agent-open>
+      <span class="material-symbols-rounded" aria-hidden="true">auto_awesome</span>
+      Agent 状态
+    </button>
+    <div class="drawer-scrim" data-agent-close></div>
+
+    <div id="assumption-modal" class="modal-shell hidden" role="dialog" aria-modal="true" aria-labelledby="assumption-modal-title">
+      <div class="modal-card compact-modal">
+        <div class="modal-header">
+          <div><p class="section-kicker">调整需求</p><h2 id="assumption-modal-title">修改默认信息</h2></div>
+          <button class="icon-btn" type="button" data-modal-close aria-label="关闭"><span class="material-symbols-rounded">close</span></button>
+        </div>
+        <label class="field-label" for="assumption-input">新的值</label>
+        <input id="assumption-input" class="text-field" type="text" autocomplete="off">
+        <p id="assumption-error" class="field-error" aria-live="polite"></p>
+        <div class="modal-actions">
+          <button class="ghost-btn" type="button" data-modal-close>取消</button>
+          <button id="assumption-save" class="primary-btn" type="button">保存并重新规划</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="risk-modal" class="modal-shell hidden" role="dialog" aria-modal="true" aria-labelledby="risk-modal-title">
+      <div class="modal-card">
+        <div class="modal-header">
+          <div><p class="section-kicker error-kicker">风险校验</p><h2 id="risk-modal-title">方案风险与确认项</h2></div>
+          <button class="icon-btn" type="button" data-modal-close aria-label="关闭"><span class="material-symbols-rounded">close</span></button>
+        </div>
+        <div id="risk-modal-content" class="risk-modal-content"></div>
+        <div class="modal-actions">
+          <button class="primary-btn" type="button" data-modal-close>我知道了</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="feedback-modal" class="modal-shell hidden" role="dialog" aria-modal="true" aria-labelledby="feedback-modal-title">
+      <div class="modal-card compact-modal">
+        <div class="modal-header">
+          <div><p class="section-kicker">反馈纠错</p><h2 id="feedback-modal-title">这次哪里不合适？</h2></div>
+          <button class="icon-btn" type="button" data-modal-close aria-label="关闭"><span class="material-symbols-rounded">close</span></button>
+        </div>
+        <div class="feedback-box">
+          <label for="feedback-input">告诉 Agent 你的真实偏好</label>
+          <textarea id="feedback-input" rows="5" placeholder="例如：这次安排太赶了，下次亲子局每天只安排 1-2 个核心点。"></textarea>
+          <p class="modal-helper">提交后只生成候选记忆，不会自动写入长期记忆。</p>
+        </div>
+        <div class="modal-actions">
+          <button class="ghost-btn" type="button" data-modal-close>取消</button>
+          <button id="feedback-submit" class="primary-btn" type="button">生成记忆候选</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="refresh-confirm-modal" class="modal-shell hidden" role="dialog" aria-modal="true" aria-labelledby="refresh-confirm-title">
+      <div class="modal-card compact-modal">
+        <div class="modal-header">
+          <div><p class="section-kicker">Mock 状态刷新</p><h2 id="refresh-confirm-title">确认应用模拟状态变化？</h2></div>
+          <button class="icon-btn" type="button" data-modal-close aria-label="关闭"><span class="material-symbols-rounded">close</span></button>
+        </div>
+        <p id="refresh-confirm-copy" class="modal-helper"></p>
+        <div class="modal-actions">
+          <button class="ghost-btn" type="button" data-modal-close>保留已保存版本</button>
+          <button id="refresh-confirm-apply" class="primary-btn" type="button">应用到当前编辑副本</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="/agent-core.js"></script>
+    <script src="/candidate-switcher.js"></script>
+    <script src="/v5-contract.js"></script>
+    <script src="/v5-adapter.js"></script>
+    <script src="/v5-renderer.js"></script>
+    <script src="/saved-plans.js"></script>
+    <script src="/app.js"></script>
   </body>
 </html>
