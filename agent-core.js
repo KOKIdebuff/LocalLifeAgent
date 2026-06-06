@@ -652,7 +652,7 @@
       preferences: preferences,
       preferenceLabels: preferences.map(function (pref) { return pref.label; }),
       childAge: childAge,
-      location: "家附近",
+      location: opts.location || "家附近",
       weatherConcern: weatherConcern,
       replanEvent: replanEvent,
       assumptions: assumptions,

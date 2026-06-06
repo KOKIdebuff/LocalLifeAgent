@@ -4,7 +4,7 @@
   "private": true,
   "description": "Static Web demo for a local life planning and execution agent with mock tools.",
   "scripts": {
-    "test": "node tests.js",
+    "test": "node tests.js && node candidate-switcher-tests.js && node saved-plans-tests.js && node v5-tests.js && node ui-shell-tests.js",
     "dev:api": "python -m uvicorn server:app --reload --host 127.0.0.1 --port 8000"
   }
 }
