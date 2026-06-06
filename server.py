@@ -1,12 +1,13 @@
 import os
 import sqlite3
 from datetime import datetime, timezone
+from pathlib import Path
 from uuid import uuid4
 
 import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -25,6 +26,7 @@ from graph_runtime import graph_runtime_status, run_intent_graph
 
 
 app = FastAPI(title="Local Life Agent V4 API")
+INDEX_FILE = Path(__file__).resolve().parent / "index.html"
 settings = get_settings()
 try:
     init_db(settings["db_path"])
@@ -38,6 +40,23 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def serve_spa_routes(request, call_next):
+    response = await call_next(request)
+    if (
+        response.status_code == 404
+        and request.method == "GET"
+        and not request.url.path.startswith("/api/")
+        and (
+            request.url.path.startswith("/plans/")
+            or request.url.path == "/saved-plans"
+            or request.url.path.startswith("/saved-plans/")
+        )
+    ):
+        return FileResponse(INDEX_FILE)
+    return response
 
 
 class IntentRequest(BaseModel):
