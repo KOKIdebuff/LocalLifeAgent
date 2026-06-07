@@ -1,12 +1,11 @@
+.git
+.venv
 __pycache__/
 .pytest_cache/
 .pytest_tmp/
-.venv/
+.env
 .agents/
 .specify/
-.env
-DEMO_SCRIPT.md
 memory/*.sqlite
 memory/*.sqlite-*
 memory/*.jsonl
-modelscope-deploy.zip
