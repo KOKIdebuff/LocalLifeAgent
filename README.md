@@ -32,6 +32,7 @@ http://106.14.46.98/
 ## 相关文档
 
 - [设计文档](DESIGN.md)
+- [Demo 设计思路与说明](DEMO_DESIGN_NOTES.md)
 - [比赛项目定义](COMPETITION_BRIEF.md)
 - [LangGraph 接入边界](LANGGRAPH_INTEGRATION.md)
 - [V4 Runtime 实施计划](specs/001-v4-runtime-state-machine-memory-loop/plan.md)
