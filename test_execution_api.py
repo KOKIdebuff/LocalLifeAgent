@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 import server
 from execution.adapter import ExecutionAdapter
-from execution.repositories import migrate_execution
+from execution.repositories import ExecutionRepository, migrate_execution
 from runtime.adapter import RuntimeAdapter
 
 
@@ -53,6 +53,10 @@ def execution_count(db_path):
         conn.close()
 
 
+def outbox_items(db_path, execution_id=None, status=None):
+    return ExecutionRepository(db_path).list_outbox(execution_id=execution_id, status=status)
+
+
 def test_execution_migration_is_idempotent_and_independent():
     with temp_dir() as tmp:
         db_path = Path(tmp) / "agent_memory.sqlite"
@@ -64,6 +68,7 @@ def test_execution_migration_is_idempotent_and_independent():
             "execution_runs",
             "execution_steps",
             "execution_events",
+            "execution_outbox",
             "execution_schema_migrations",
         }.issubset(table_names(db_path))
 
@@ -113,6 +118,82 @@ def test_execution_adapter_advances_steps_to_completion():
             "execution_created",
             "step_advanced",
             "execution_completed",
+        ]
+
+
+def test_execution_outbox_worker_drains_active_steps_to_completion():
+    with temp_dir() as tmp:
+        db_path = Path(tmp) / "agent_memory.sqlite"
+        runtime = RuntimeAdapter(db_path)
+        adapter = ExecutionAdapter(db_path)
+        session = runtime.create_session(input_text="plan", overrides={}, idempotency_key="runtime-outbox").session
+
+        created = adapter.create_execution(
+            session_id=session.sessionId,
+            plan_id="plan-outbox",
+            plan_version=1,
+            steps=[{"title": "first mock step"}, {"title": "second mock step"}],
+            idempotency_key="create-outbox",
+        )
+        execution_id = created.execution.executionId
+        pending = outbox_items(db_path, execution_id=execution_id, status="pending")
+        assert len(pending) == 1
+        assert pending[0].stepId == created.execution.currentStepId
+
+        first = adapter.drain_outbox(limit=10, actor="test-worker")
+        assert first.completed == 1
+        assert first.skipped == 0
+        after_first = adapter.get_execution(execution_id)
+        assert after_first.status == "active"
+        assert [item.status for item in outbox_items(db_path, execution_id=execution_id)] == [
+            "completed",
+            "pending",
+        ]
+
+        second = adapter.drain_outbox(limit=10, actor="test-worker")
+        assert second.completed == 1
+        completed = adapter.get_execution(execution_id)
+        assert completed.status == "completed"
+        assert [item.status for item in outbox_items(db_path, execution_id=execution_id)] == [
+            "completed",
+            "completed",
+        ]
+        assert [event.type for event in runtime.list_events(session_id=session.sessionId)] == [
+            "session_created",
+            "execution_requested_summary",
+            "execution_completed_summary",
+        ]
+
+
+def test_execution_outbox_skips_stale_step_after_manual_advance():
+    with temp_dir() as tmp:
+        db_path = Path(tmp) / "agent_memory.sqlite"
+        adapter = ExecutionAdapter(db_path)
+
+        created = adapter.create_execution(
+            session_id=None,
+            plan_id="plan-stale-outbox",
+            plan_version=1,
+            steps=[{"title": "manual first"}, {"title": "worker second"}],
+            idempotency_key="create-stale-outbox",
+        )
+        execution_id = created.execution.executionId
+        adapter.advance_execution(
+            execution_id=execution_id,
+            expected_version=1,
+            plan_version=1,
+            idempotency_key="manual-advance-first",
+            outcome="succeeded",
+        )
+
+        stale = adapter.drain_outbox(limit=1, actor="test-worker")
+        assert stale.completed == 0
+        assert stale.skipped == 1
+        assert stale.items[0]["error"] == "current_step_changed"
+        assert adapter.get_execution(execution_id).status == "active"
+        assert [item.status for item in outbox_items(db_path, execution_id=execution_id)] == [
+            "skipped",
+            "pending",
         ]
 
 
@@ -265,6 +346,32 @@ def test_execution_routes_create_advance_and_cancel(monkeypatch):
         fetched = client.get(f"/api/executions/{execution_id}")
         assert fetched.status_code == 200
         assert fetched.json()["execution"]["status"] == "cancelled"
+
+
+def test_execution_outbox_drain_route(monkeypatch):
+    with temp_dir() as tmp:
+        db_path = Path(tmp) / "agent_memory.sqlite"
+        client = client_with_settings(monkeypatch, db_path)
+
+        created = client.post(
+            "/api/executions",
+            json={
+                "planId": "plan-route-outbox",
+                "planVersion": 1,
+                "idempotencyKey": "route-outbox-create",
+                "steps": [{"title": "mock worker step"}],
+            },
+        )
+        assert created.status_code == 200
+        execution_id = created.json()["execution"]["executionId"]
+
+        drained = client.post("/api/executions/outbox/drain", json={"limit": 1, "actor": "route-worker"})
+        assert drained.status_code == 200
+        assert drained.json()["completed"] == 1
+
+        fetched = client.get(f"/api/executions/{execution_id}")
+        assert fetched.status_code == 200
+        assert fetched.json()["execution"]["status"] == "completed"
 
 
 def test_execution_create_with_runtime_session_writes_requested_summary():

@@ -5,6 +5,7 @@ from typing import Any
 from uuid import uuid4
 
 from .core import ExecutionCore
+from .worker import ExecutionWorker
 
 
 def _actor(actor: str | None) -> str:
@@ -18,6 +19,7 @@ def _trace(trace_id: str | None) -> str:
 class ExecutionAdapter:
     def __init__(self, db_path: Path | str):
         self.core = ExecutionCore(db_path)
+        self.worker = ExecutionWorker(db_path)
 
     def create_execution(self, *, session_id: str | None, plan_id: str, plan_version: int, steps: list[dict[str, Any]], idempotency_key: str, actor: str | None = None, trace_id: str | None = None):
         return self.core.create_execution(
@@ -53,4 +55,11 @@ class ExecutionAdapter:
             actor=_actor(actor),
             trace_id=_trace(trace_id),
             reason=reason,
+        )
+
+    def drain_outbox(self, *, limit: int = 10, actor: str | None = None, trace_id: str | None = None):
+        return self.worker.drain_outbox(
+            limit=limit,
+            actor=_actor(actor),
+            trace_id=_trace(trace_id),
         )

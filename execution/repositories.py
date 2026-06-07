@@ -11,6 +11,7 @@ from .models import (
     EXECUTION_EVENT_VERSION,
     EXECUTION_SCHEMA_VERSION,
     ExecutionEvent,
+    ExecutionOutboxItem,
     ExecutionRun,
     ExecutionStep,
     new_id,
@@ -105,6 +106,29 @@ def _migrate(conn: sqlite3.Connection) -> None:
         """
     )
     conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS execution_outbox (
+          outbox_id TEXT PRIMARY KEY,
+          execution_id TEXT NOT NULL,
+          step_id TEXT NOT NULL,
+          outbox_type TEXT NOT NULL,
+          status TEXT NOT NULL,
+          attempts INTEGER NOT NULL,
+          max_attempts INTEGER NOT NULL,
+          available_at TEXT NOT NULL,
+          locked_at TEXT,
+          processed_at TEXT,
+          last_error TEXT,
+          payload_json TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY(execution_id) REFERENCES execution_runs(execution_id),
+          FOREIGN KEY(step_id) REFERENCES execution_steps(step_id),
+          UNIQUE(execution_id, step_id, outbox_type)
+        )
+        """
+    )
+    conn.execute(
         "INSERT OR IGNORE INTO execution_schema_migrations (version, applied_at) VALUES (?, ?)",
         (MIGRATION_VERSION, utc_now()),
     )
@@ -156,6 +180,25 @@ def _event_from_row(row: sqlite3.Row) -> ExecutionEvent:
         traceId=row["trace_id"],
         payload=json.loads(row["payload_json"] or "{}"),
         createdAt=row["created_at"],
+    )
+
+
+def _outbox_from_row(row: sqlite3.Row) -> ExecutionOutboxItem:
+    return ExecutionOutboxItem(
+        outboxId=row["outbox_id"],
+        executionId=row["execution_id"],
+        stepId=row["step_id"],
+        outboxType=row["outbox_type"],
+        status=row["status"],
+        attempts=row["attempts"],
+        maxAttempts=row["max_attempts"],
+        availableAt=row["available_at"],
+        lockedAt=row["locked_at"],
+        processedAt=row["processed_at"],
+        lastError=row["last_error"],
+        payload=json.loads(row["payload_json"] or "{}"),
+        createdAt=row["created_at"],
+        updatedAt=row["updated_at"],
     )
 
 
@@ -302,7 +345,9 @@ class ExecutionRepository:
             trace_id=trace_id,
             payload={"planId": plan_id, "planVersion": plan_version},
         )
-        return self.get_execution_with_conn(conn, execution_id), event, False
+        execution = self.get_execution_with_conn(conn, execution_id)
+        self.enqueue_current_step_outbox_with_conn(conn, execution=execution, reason="execution_created")
+        return execution, event, False
 
     def append_event(
         self,
@@ -372,3 +417,143 @@ class ExecutionRepository:
             return [_event_from_row(row) for row in rows]
         finally:
             conn.close()
+
+    def enqueue_current_step_outbox_with_conn(self, conn: sqlite3.Connection, *, execution: ExecutionRun, reason: str) -> ExecutionOutboxItem | None:
+        if execution.status != "active" or not execution.currentStepId:
+            return None
+        now = utc_now()
+        outbox_id = new_id("execution_outbox")
+        payload = {
+            "executionId": execution.executionId,
+            "stepId": execution.currentStepId,
+            "planId": execution.planId,
+            "planVersion": execution.planVersion,
+            "reason": reason,
+        }
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO execution_outbox
+              (outbox_id, execution_id, step_id, outbox_type, status, attempts,
+               max_attempts, available_at, locked_at, processed_at, last_error,
+               payload_json, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                outbox_id,
+                execution.executionId,
+                execution.currentStepId,
+                "mock_step_advance",
+                "pending",
+                0,
+                3,
+                now,
+                None,
+                None,
+                None,
+                _json(payload),
+                now,
+                now,
+            ),
+        )
+        row = conn.execute(
+            """
+            SELECT * FROM execution_outbox
+            WHERE execution_id = ? AND step_id = ? AND outbox_type = ?
+            """,
+            (execution.executionId, execution.currentStepId, "mock_step_advance"),
+        ).fetchone()
+        return _outbox_from_row(row) if row else None
+
+    def list_outbox(self, *, execution_id: str | None = None, status: str | None = None) -> list[ExecutionOutboxItem]:
+        conn = connect(self.db_path)
+        try:
+            _migrate(conn)
+            clauses = []
+            params: list[Any] = []
+            if execution_id:
+                clauses.append("execution_id = ?")
+                params.append(execution_id)
+            if status:
+                clauses.append("status = ?")
+                params.append(status)
+            where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+            rows = conn.execute(
+                f"SELECT * FROM execution_outbox {where} ORDER BY created_at ASC, outbox_id ASC",
+                params,
+            ).fetchall()
+            return [_outbox_from_row(row) for row in rows]
+        finally:
+            conn.close()
+
+    def claim_pending_outbox(self, *, limit: int, worker_id: str) -> list[ExecutionOutboxItem]:
+        safe_limit = max(1, min(limit, 50))
+        with execution_transaction(self.db_path) as conn:
+            now = utc_now()
+            rows = conn.execute(
+                """
+                SELECT * FROM execution_outbox
+                WHERE status = ? AND available_at <= ?
+                ORDER BY created_at ASC, outbox_id ASC
+                LIMIT ?
+                """,
+                ("pending", now, safe_limit),
+            ).fetchall()
+            outbox_ids = [row["outbox_id"] for row in rows]
+            for outbox_id in outbox_ids:
+                conn.execute(
+                    """
+                    UPDATE execution_outbox
+                    SET status = ?, attempts = attempts + 1, locked_at = ?,
+                        last_error = NULL, updated_at = ?
+                    WHERE outbox_id = ? AND status = ?
+                    """,
+                    ("processing", now, now, outbox_id, "pending"),
+                )
+            if not outbox_ids:
+                return []
+            placeholders = ",".join("?" for _ in outbox_ids)
+            claimed = conn.execute(
+                f"SELECT * FROM execution_outbox WHERE outbox_id IN ({placeholders}) ORDER BY created_at ASC, outbox_id ASC",
+                outbox_ids,
+            ).fetchall()
+            return [_outbox_from_row(row) for row in claimed]
+
+    def mark_outbox_completed(self, outbox_id: str) -> ExecutionOutboxItem | None:
+        return self._mark_outbox_status(outbox_id, status="completed", last_error=None, processed=True)
+
+    def mark_outbox_skipped(self, outbox_id: str, reason: str) -> ExecutionOutboxItem | None:
+        return self._mark_outbox_status(outbox_id, status="skipped", last_error=reason, processed=True)
+
+    def mark_outbox_failed(self, outbox_id: str, error: str) -> ExecutionOutboxItem | None:
+        with execution_transaction(self.db_path) as conn:
+            row = conn.execute("SELECT * FROM execution_outbox WHERE outbox_id = ?", (outbox_id,)).fetchone()
+            if not row:
+                return None
+            item = _outbox_from_row(row)
+            next_status = "failed" if item.attempts >= item.maxAttempts else "pending"
+            now = utc_now()
+            conn.execute(
+                """
+                UPDATE execution_outbox
+                SET status = ?, last_error = ?, locked_at = NULL, updated_at = ?
+                WHERE outbox_id = ?
+                """,
+                (next_status, error[:500], now, outbox_id),
+            )
+            updated = conn.execute("SELECT * FROM execution_outbox WHERE outbox_id = ?", (outbox_id,)).fetchone()
+            return _outbox_from_row(updated) if updated else None
+
+    def _mark_outbox_status(self, outbox_id: str, *, status: str, last_error: str | None, processed: bool) -> ExecutionOutboxItem | None:
+        with execution_transaction(self.db_path) as conn:
+            now = utc_now()
+            conn.execute(
+                """
+                UPDATE execution_outbox
+                SET status = ?, last_error = ?, processed_at = ?, locked_at = NULL,
+                    updated_at = ?
+                WHERE outbox_id = ?
+                """,
+                (status, last_error, now if processed else None, now, outbox_id),
+            )
+            row = conn.execute("SELECT * FROM execution_outbox WHERE outbox_id = ?", (outbox_id,)).fetchone()
+            return _outbox_from_row(row) if row else None

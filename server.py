@@ -187,6 +187,14 @@ class ExecutionCancelRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=500)
 
 
+class ExecutionOutboxDrainRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    limit: int = Field(default=10, ge=1, le=50)
+    actor: str | None = Field(default=None, max_length=120)
+    traceId: str | None = Field(default=None, max_length=160)
+
+
 class ShareCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -741,6 +749,19 @@ def cancel_execution(execution_id: str, request: ExecutionCancelRequest):
             actor=request.actor,
             trace_id=request.traceId,
             reason=request.reason,
+        )
+        return result.public_dict()
+    except (ExecutionError, RuntimeErrorBase, sqlite3.Error) as exc:
+        return execution_error_response(exc)
+
+
+@app.post("/api/executions/outbox/drain")
+def drain_execution_outbox(request: ExecutionOutboxDrainRequest):
+    try:
+        result = execution_adapter().drain_outbox(
+            limit=request.limit,
+            actor=request.actor,
+            trace_id=request.traceId,
         )
         return result.public_dict()
     except (ExecutionError, RuntimeErrorBase, sqlite3.Error) as exc:

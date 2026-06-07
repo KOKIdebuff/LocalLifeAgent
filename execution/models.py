@@ -79,6 +79,27 @@ class ExecutionEvent:
 
 
 @dataclass(frozen=True)
+class ExecutionOutboxItem:
+    outboxId: str
+    executionId: str
+    stepId: str
+    outboxType: str
+    status: str
+    attempts: int
+    maxAttempts: int
+    availableAt: str
+    lockedAt: str | None
+    processedAt: str | None
+    lastError: str | None
+    payload: dict[str, Any]
+    createdAt: str
+    updatedAt: str
+
+    def public_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
 class ExecutionWriteResult:
     ok: bool
     execution: ExecutionRun

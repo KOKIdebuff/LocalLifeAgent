@@ -137,6 +137,7 @@ class ExecutionCore:
                 payload={"outcome": outcome, "failureType": failure_type, "stepId": current.stepId},
             )
             updated = self.repository.get_execution_with_conn(conn, execution_id)
+            self.repository.enqueue_current_step_outbox_with_conn(conn, execution=updated, reason=event_type)
             return self._with_runtime_summary(
                 conn,
                 execution=updated,
