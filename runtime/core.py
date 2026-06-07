@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -14,23 +15,39 @@ from .errors import (
 )
 from .models import RuntimeWriteResult
 from .repositories import RuntimeRepository, runtime_transaction
+from .repositories import ensure_runtime_schema
 from .state_machine import RuntimeStateMachine
 
 
 ALLOWED_PAYLOAD_KEYS = {
     "answer",
     "candidateId",
+    "errorCode",
     "error",
     "executionId",
+    "executionStatus",
     "inputText",
     "intent",
     "memoryId",
     "metadata",
     "operation",
+    "planId",
+    "planVersion",
     "recoverable",
+    "reason",
     "source",
     "summary",
 }
+
+EXECUTION_SUMMARY_EVENT_TYPES = {
+    "execution_requested_summary",
+    "execution_completed_summary",
+    "execution_blocked_summary",
+    "execution_cancelled_summary",
+    "execution_failed_summary",
+}
+
+MAX_RUNTIME_PAYLOAD_BYTES = 4096
 
 
 class RuntimeCore:
@@ -127,6 +144,43 @@ class RuntimeCore:
     def list_events(self, *, session_id: str, after_sequence: int = 0, limit: int = 100):
         return self.repository.list_events(session_id, after_sequence, limit)
 
+    def append_execution_summary(
+        self,
+        *,
+        session_id: str,
+        event_type: str,
+        idempotency_key: str,
+        actor: str,
+        trace_id: str,
+        payload: dict[str, Any],
+        conn=None,
+    ) -> RuntimeWriteResult:
+        if event_type not in EXECUTION_SUMMARY_EVENT_TYPES:
+            raise InvalidTransition(eventType=event_type, reason="not_execution_summary_event")
+        payload = self._sanitize_payload(payload)
+        if "executionId" not in payload:
+            raise InvalidTransition(eventType=event_type, reason="execution_id_required")
+        if conn is not None:
+            return self._append_execution_summary_with_conn(
+                conn,
+                session_id=session_id,
+                event_type=event_type,
+                idempotency_key=idempotency_key,
+                actor=actor,
+                trace_id=trace_id,
+                payload=payload,
+            )
+        with runtime_transaction(self.repository.db_path) as transaction:
+            return self._append_execution_summary_with_conn(
+                transaction,
+                session_id=session_id,
+                event_type=event_type,
+                idempotency_key=idempotency_key,
+                actor=actor,
+                trace_id=trace_id,
+                payload=payload,
+            )
+
     def create_recovery_point(
         self,
         *,
@@ -162,6 +216,40 @@ class RuntimeCore:
 
     def rollback_to_recovery_point(self, *args, **kwargs) -> RuntimeWriteResult:
         raise RollbackNotSupported(reason="P0 exposes latest-only recovery point storage; full restore flow is not enabled.")
+
+    def _append_execution_summary_with_conn(
+        self,
+        conn,
+        *,
+        session_id: str,
+        event_type: str,
+        idempotency_key: str,
+        actor: str,
+        trace_id: str,
+        payload: dict[str, Any],
+    ) -> RuntimeWriteResult:
+        ensure_runtime_schema(conn)
+        session = self.repository.get_session_with_conn(conn, session_id)
+        duplicate = self.repository.get_event_by_idempotency(conn, session_id, idempotency_key)
+        if duplicate:
+            updated = self.repository.get_session_with_conn(conn, session_id)
+            return RuntimeWriteResult(ok=True, session=updated, event=duplicate, duplicate=True)
+        if session.lifecycleStatus == "closed":
+            raise SessionClosed(sessionId=session_id)
+        self.machine.assert_known_event(event_type)
+        event = self.repository.append_event(
+            conn,
+            session=session,
+            event_type=event_type,
+            idempotency_key=idempotency_key,
+            actor=actor,
+            trace_id=trace_id,
+            payload=payload,
+            reason=payload.get("reason") or payload.get("summary") or "execution summary",
+            active_execution_id=payload["executionId"],
+        )
+        updated = self.repository.get_session_with_conn(conn, session_id)
+        return RuntimeWriteResult(ok=True, session=updated, event=event)
 
     def _apply_lifecycle(
         self,
@@ -219,4 +307,7 @@ class RuntimeCore:
         unknown = sorted(set(payload) - ALLOWED_PAYLOAD_KEYS)
         if unknown:
             raise InvalidTransition(reason="payload_field_not_allowed", fields=unknown)
+        encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+        if len(encoded) > MAX_RUNTIME_PAYLOAD_BYTES:
+            raise InvalidTransition(reason="payload_too_large", maxBytes=MAX_RUNTIME_PAYLOAD_BYTES)
         return payload

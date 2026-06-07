@@ -11,6 +11,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from execution import ExecutionAdapter
+from execution.errors import ExecutionError
 from backend_core import (
     build_chat_payload,
     decide_memory_candidate,
@@ -55,6 +57,8 @@ async def serve_spa_routes(request, call_next):
             request.url.path.startswith("/plans/")
             or request.url.path == "/saved-plans"
             or request.url.path.startswith("/saved-plans/")
+            or request.url.path == "/executions"
+            or request.url.path.startswith("/executions/")
         )
     ):
         return FileResponse(INDEX_FILE)
@@ -128,6 +132,47 @@ class RuntimeSubmitEventRequest(BaseModel):
 
 
 class RuntimeLifecycleRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expectedVersion: int = Field(ge=1)
+    idempotencyKey: str = Field(min_length=1, max_length=160)
+    actor: str | None = Field(default=None, max_length=120)
+    traceId: str | None = Field(default=None, max_length=160)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class ExecutionStepInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(min_length=1, max_length=200)
+    maxAttempts: int = Field(default=1, ge=1, le=5)
+
+
+class ExecutionCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sessionId: str | None = Field(default=None, max_length=160)
+    planId: str = Field(min_length=1, max_length=160)
+    planVersion: int = Field(ge=1)
+    steps: list[ExecutionStepInput] = Field(min_length=1, max_length=100)
+    idempotencyKey: str = Field(min_length=1, max_length=160)
+    actor: str | None = Field(default=None, max_length=120)
+    traceId: str | None = Field(default=None, max_length=160)
+
+
+class ExecutionAdvanceRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expectedVersion: int = Field(ge=1)
+    planVersion: int = Field(ge=1)
+    idempotencyKey: str = Field(min_length=1, max_length=160)
+    outcome: str = Field(pattern="^(succeeded|failed|blocked)$")
+    actor: str | None = Field(default=None, max_length=120)
+    traceId: str | None = Field(default=None, max_length=160)
+    failureType: str | None = Field(default=None, max_length=120)
+
+
+class ExecutionCancelRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     expectedVersion: int = Field(ge=1)
@@ -227,8 +272,23 @@ def runtime_adapter():
     return RuntimeAdapter(current["db_path"])
 
 
+def execution_adapter():
+    current = get_settings()
+    return ExecutionAdapter(current["db_path"])
+
+
 def runtime_error_response(exc):
     if isinstance(exc, RuntimeErrorBase):
+        return JSONResponse(status_code=exc.http_status, content=exc.to_payload())
+    if isinstance(exc, sqlite3.Error):
+        return JSONResponse(status_code=503, content=storage_error_payload())
+    raise exc
+
+
+def execution_error_response(exc):
+    if isinstance(exc, RuntimeErrorBase):
+        return JSONResponse(status_code=exc.http_status, content=exc.to_payload())
+    if isinstance(exc, ExecutionError):
         return JSONResponse(status_code=exc.http_status, content=exc.to_payload())
     if isinstance(exc, sqlite3.Error):
         return JSONResponse(status_code=503, content=storage_error_payload())
@@ -579,6 +639,65 @@ def list_runtime_events(session_id: str, afterSequence: int = 0, limit: int = 10
         }
     except (RuntimeErrorBase, sqlite3.Error) as exc:
         return runtime_error_response(exc)
+
+
+@app.post("/api/executions")
+def create_execution(request: ExecutionCreateRequest):
+    try:
+        result = execution_adapter().create_execution(
+            session_id=request.sessionId,
+            plan_id=request.planId,
+            plan_version=request.planVersion,
+            steps=[step.model_dump() for step in request.steps],
+            idempotency_key=request.idempotencyKey,
+            actor=request.actor,
+            trace_id=request.traceId,
+        )
+        return result.public_dict()
+    except (ExecutionError, RuntimeErrorBase, sqlite3.Error) as exc:
+        return execution_error_response(exc)
+
+
+@app.get("/api/executions/{execution_id}")
+def get_execution(execution_id: str):
+    try:
+        return {"ok": True, "execution": execution_adapter().get_execution(execution_id).public_dict()}
+    except (ExecutionError, RuntimeErrorBase, sqlite3.Error) as exc:
+        return execution_error_response(exc)
+
+
+@app.post("/api/executions/{execution_id}/advance")
+def advance_execution(execution_id: str, request: ExecutionAdvanceRequest):
+    try:
+        result = execution_adapter().advance_execution(
+            execution_id=execution_id,
+            expected_version=request.expectedVersion,
+            plan_version=request.planVersion,
+            idempotency_key=request.idempotencyKey,
+            outcome=request.outcome,
+            actor=request.actor,
+            trace_id=request.traceId,
+            failure_type=request.failureType,
+        )
+        return result.public_dict()
+    except (ExecutionError, RuntimeErrorBase, sqlite3.Error) as exc:
+        return execution_error_response(exc)
+
+
+@app.post("/api/executions/{execution_id}/cancel")
+def cancel_execution(execution_id: str, request: ExecutionCancelRequest):
+    try:
+        result = execution_adapter().cancel_execution(
+            execution_id=execution_id,
+            expected_version=request.expectedVersion,
+            idempotency_key=request.idempotencyKey,
+            actor=request.actor,
+            trace_id=request.traceId,
+            reason=request.reason,
+        )
+        return result.public_dict()
+    except (ExecutionError, RuntimeErrorBase, sqlite3.Error) as exc:
+        return execution_error_response(exc)
 
 
 @app.post("/api/feedback")
