@@ -23,6 +23,18 @@
 - **失败降级**：后端不可用、未配置密钥或模型置信度不足时，前端回退到本地规则。
 - **契约驱动**：使用 JSON Schema 描述意图、反馈记忆、Runtime 状态机和 V5 UI Contract。
 
+## 相关文档
+
+- [设计文档](DESIGN.md)
+- [比赛项目定义](COMPETITION_BRIEF.md)
+- [LangGraph 接入边界](LANGGRAPH_INTEGRATION.md)
+- [V4 Runtime 实施计划](specs/001-v4-runtime-state-machine-memory-loop/plan.md)
+- [V4 Runtime 契约](specs/001-v4-runtime-state-machine-memory-loop/contracts/runtime-memory-contract.md)
+- [V5 Generative UI、协同与执行契约](V5_GENERATIVE_UI_COLLABORATION_PLAN.md)
+- [V5 方案生命周期契约](V5_PLAN_LIFECYCLE_CONTRACT.md)
+- [项目进度](progress.md)
+- [工程复盘](lessons.md)
+
 ## 项目边界
 
 ### Mock 与地点数据
@@ -300,15 +312,3 @@ npm.cmd test
 - 为冷门城市 fallback 展示置信度、来源和替代推荐。
 - 为 Mock API 增加可配置、可复现的失败率、超时、重试和降级策略。
 - 继续完善筛选、地图感、详情页和多轮修改体验。
-
-## 相关文档
-
-- [设计文档](DESIGN.md)
-- [比赛项目定义](COMPETITION_BRIEF.md)
-- [LangGraph 接入边界](LANGGRAPH_INTEGRATION.md)
-- [V4 Runtime 实施计划](specs/001-v4-runtime-state-machine-memory-loop/plan.md)
-- [V4 Runtime 契约](specs/001-v4-runtime-state-machine-memory-loop/contracts/runtime-memory-contract.md)
-- [V5 Generative UI、协同与执行契约](V5_GENERATIVE_UI_COLLABORATION_PLAN.md)
-- [V5 方案生命周期契约](V5_PLAN_LIFECYCLE_CONTRACT.md)
-- [项目进度](progress.md)
-- [工程复盘](lessons.md)
