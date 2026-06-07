@@ -380,16 +380,16 @@
 
   function renderSavedPlansPage() {
     const snapshots = savedPlans.listSnapshots(window.localStorage);
-    els.routeBreadcrumbCurrent.textContent = "已保存方案";
-    els.routeKicker.textContent = "SAVED PLAN LIBRARY";
-    els.routeTitle.textContent = "已保存方案";
-    els.routeSubtitle.textContent = "每条记录只保存一个完整选中方案，其他候选保持轻量摘要。";
+    els.routeBreadcrumbCurrent.textContent = "已保存版本";
+    els.routeKicker.textContent = "SAVED VERSIONS";
+    els.routeTitle.textContent = "已保存版本";
+    els.routeSubtitle.textContent = "每个版本都会保留你保存的完整方案，其他备选只保留名称和评分。";
     els.routeActions.innerHTML = "";
     els.routeContent.innerHTML = "";
     setRouteNotice("", "");
     if (!snapshots.length) {
       els.routeContent.className = "route-content empty-state";
-      els.routeContent.textContent = "还没有已保存方案。先从工作台生成方案并进入详情保存。";
+      els.routeContent.textContent = "还没有已保存版本。先从工作台生成方案并进入详情保存。";
       return;
     }
     els.routeContent.className = "route-content saved-plan-grid";
@@ -411,15 +411,15 @@
       const tags = document.createElement("div");
       tags.className = "chip-row";
       tags.append(
-        makeTag(snapshot.selectedPlan.cards.length + " 张卡片", "blue"),
-        makeTag(snapshot.candidateSummaries.length + " 个候选摘要"),
-        makeTag((snapshot.selectedPlan.lockedRefs || []).length + " 个执行锁定", "amber")
+        makeTag(snapshot.selectedPlan.cards.length + " 个安排项", "blue"),
+        makeTag(snapshot.candidateSummaries.length + " 个备选方案"),
+        makeTag((snapshot.selectedPlan.lockedRefs || []).length + " 个已确认事项", "amber")
       );
       heading.append(kicker, title, summary, tags);
       const open = document.createElement("button");
       open.type = "button";
       open.className = "secondary-btn";
-      open.textContent = "打开已保存方案";
+      open.textContent = "打开已保存版本";
       open.addEventListener("click", function () {
         navigateTo("/saved-plans/" + encodeURIComponent(snapshot.snapshotId));
       });
@@ -455,7 +455,7 @@
       els.routeBreadcrumbCurrent.textContent = "方案不可用";
       els.routeTitle.textContent = "未找到稳定方案";
       els.routeSubtitle.textContent = "当前地址没有可恢复的本地方案数据。";
-      setRouteNotice("已保留现有已保存记录，没有覆盖任何方案。", "warning");
+      setRouteNotice("已保留现有已保存版本，没有覆盖任何方案。", "warning");
       return;
     }
 
@@ -464,35 +464,37 @@
       return item.id === workspace.selectedPlanId;
     });
     const selected = workspace.selectedPayload;
-    els.routeBreadcrumbCurrent.textContent = isSaved ? "已保存方案详情" : "行程详情";
-    els.routeKicker.textContent = isSaved ? "SAVED PLAN SNAPSHOT" : "PLAN DETAIL";
+    els.routeBreadcrumbCurrent.textContent = isSaved ? "已保存版本详情" : "行程详情";
+    els.routeKicker.textContent = isSaved ? "SAVED VERSION" : "PLAN DETAIL";
     els.routeTitle.textContent = plan ? plan.name : selected.name;
     els.routeSubtitle.textContent = isSaved
-      ? "按执行状态恢复。模拟状态变化只会进入当前编辑副本，不会自动覆盖快照。"
+      ? "按事项状态恢复。新的确认结果只会作为未保存调整，不会自动覆盖已保存版本。"
       : "活动、餐厅、交通和时间块支持局部调整；未影响引用保持稳定。";
 
     const listButton = document.createElement("button");
     listButton.type = "button";
     listButton.className = "ghost-btn";
-    listButton.textContent = "已保存方案";
+    listButton.textContent = "已保存版本";
     listButton.addEventListener("click", function () { navigateTo("/saved-plans"); });
     const saveButton = document.createElement("button");
     saveButton.type = "button";
     saveButton.className = "primary-btn";
-    saveButton.textContent = isSaved && !workspace.dirty ? "另存为新快照" : "保存方案";
+    saveButton.textContent = isSaved && !workspace.dirty ? "保存为新版本" : "保存方案";
     saveButton.addEventListener("click", saveCurrentDetail);
     els.routeActions.append(listButton, saveButton);
 
     if (workspace.dirty) {
-      setRouteNotice("版本 " + workspace.context.version + " 有未保存调整。已保留调整前稳定快照，可撤销本次调整。", "warning");
+      setRouteNotice("版本 " + workspace.context.version + " 有未保存调整。已保留调整前的稳定版本，可撤销本次调整。", "warning");
     } else {
-      setRouteNotice("当前为稳定版本 " + workspace.context.version + "。外部商家、库存、支付和订座状态均为 Mock。", "success");
+      setRouteNotice("当前为稳定版本 " + workspace.context.version + "。商家、库存、支付和订座结果仅用于演示，不会产生真实外部操作。", "success");
     }
 
     els.routeContent.appendChild(createDetailLifecyclePanel(workspace, isSaved));
     if (plan) {
-      els.routeContent.appendChild(createDetailReplanControls(workspace, plan));
-      const planCard = createPlanCard(plan);
+      const planCard = createPlanCard(plan, {
+        detailWorkspace: workspace,
+        hideDetailAction: true,
+      });
       planCard.classList.add("detail-plan-card");
       els.routeContent.appendChild(planCard);
     } else {
@@ -511,14 +513,14 @@
     title.textContent = "方案生命周期";
     const text = document.createElement("p");
     text.textContent = isSaved
-      ? "已从快照恢复。成功步骤保持只读，其余步骤按 reopenPolicy 处理。"
+      ? "已从保存版本恢复。已完成事项保持只读，其余事项可重新确认或继续调整。"
       : "当前详情以稳定方案为基线，局部提交会生成新版本。";
     const tags = document.createElement("div");
     tags.className = "chip-row";
     tags.append(
       makeTag("版本 " + workspace.context.version, "blue"),
       makeTag(workspace.dirty ? "未保存" : "已稳定", workspace.dirty ? "amber" : "green"),
-      makeTag((workspace.selectedPayload.lockedRefs || []).length + " 个锁定区块")
+      makeTag((workspace.selectedPayload.lockedRefs || []).length + " 个已确认事项")
     );
     summary.append(title, text, tags);
     const actions = document.createElement("div");
@@ -541,69 +543,35 @@
     return panel;
   }
 
-  function createDetailReplanControls(workspace, plan) {
-    const section = document.createElement("section");
-    section.className = "detail-replan-section";
-    const heading = document.createElement("div");
-    heading.className = "section-heading";
-    heading.innerHTML = "<div><p class=\"section-kicker\">局部重排</p><h2>只调整受影响区块</h2></div>";
-    const grid = document.createElement("div");
-    grid.className = "detail-replan-grid";
-    [
-      ["activity", "活动", 0],
-      ["restaurant", "餐厅", 0],
-      ["transport", "第一段交通", 0],
-      ["transport", "第二段交通", 1],
-    ].forEach(function (entry) {
-      const card = createReplanControlCard(workspace, entry[0], entry[1], entry[2]);
-      grid.appendChild(card);
-    });
-    const timeline = document.createElement("article");
-    timeline.className = "replan-control-card timeline-control";
-    const timelineTitle = document.createElement("h3");
-    timelineTitle.textContent = "时间块";
-    const timelineText = document.createElement("p");
-    timelineText.textContent = "后移某个时间块时，只重算该节点及后续时间。";
-    const timelineActions = document.createElement("div");
-    timelineActions.className = "timeline-adjust-actions";
-    plan.timeline.forEach(function (item, index) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "ghost-btn";
-      button.textContent = item.time + " " + item.title + " 后移 15 分钟";
-      button.addEventListener("click", function () {
-        commitTimelineAdjustment(index);
-      });
-      timelineActions.appendChild(button);
-    });
-    timeline.append(timelineTitle, timelineText, timelineActions);
-    grid.appendChild(timeline);
-    section.append(heading, grid);
-    return section;
+  function findSelectedBlockCard(workspace, type, segmentIndex) {
+    return (workspace.selectedPayload.cards || []).find(function (item) {
+      return item.type === type && (type !== "transport" ||
+        Number(item.meta && item.meta.segmentIndex || 0) === Number(segmentIndex || 0));
+    }) || null;
   }
 
-  function createReplanControlCard(workspace, type, label, segmentIndex) {
+  function createReplanControlCard(workspace, type, label, segmentIndex, options) {
+    const opts = options || {};
     const card = document.createElement("article");
-    card.className = "replan-control-card";
-    const targetCard = (workspace.selectedPayload.cards || []).find(function (item) {
-      return item.type === type && (type !== "transport" ||
-        Number(item.meta && item.meta.segmentIndex || 0) === segmentIndex);
-    });
+    card.className = "replan-control-card" + (opts.inline ? " inline-replan-control" : "");
+    card.dataset.adjustmentType = type;
+    card.dataset.segmentIndex = String(segmentIndex || 0);
+    const targetCard = findSelectedBlockCard(workspace, type, segmentIndex);
     const locked = targetCard && savedPlans.isRefLocked(
       { selectedPlan: workspace.selectedPayload },
       targetCard.entityRef
     );
     const title = document.createElement("h3");
-    title.textContent = label;
+    title.textContent = opts.inline ? "调整这项安排" : label;
     const text = document.createElement("p");
     text.textContent = locked
-      ? "该区块已模拟执行成功，按契约只读锁定。"
-      : "先预览稳定候选及时间、预算、风险影响，再显式采用。";
+      ? "这项安排已经确认完成，不能在这里直接修改。"
+      : "先查看另一个选择，确认时间、预算和风险变化后再使用。";
     const button = document.createElement("button");
     button.type = "button";
     button.className = locked ? "ghost-btn" : "secondary-btn";
     button.disabled = Boolean(locked);
-    button.textContent = locked ? "已锁定" : "预览下一个候选";
+    button.textContent = locked ? "已确认" : "查看另一个选择";
     button.addEventListener("click", function () {
       previewDetailCandidate(type, segmentIndex, label);
     });
@@ -622,7 +590,7 @@
       segmentIndex: segmentIndex,
     });
     if (!switcher || switcher.candidates.length < 2) {
-      setRouteNotice("没有可用的稳定候选，已保留当前方案。", "warning");
+      setRouteNotice("暂时没有其他可用选择，已保留当前方案。", "warning");
       return;
     }
     switcher = candidateRuntime.move(switcher, "next");
@@ -641,15 +609,23 @@
   function renderDetailCandidatePreview() {
     const pending = state.detailCandidate;
     if (!pending) return;
-    const old = els.routeContent.querySelector(".detail-preview-panel");
+    const old = els.routeContent.querySelector(".inline-choice-panel");
     if (old) old.remove();
+    const target = Array.from(els.routeContent.querySelectorAll(".inline-replan-control")).find(function (card) {
+      return card.dataset.adjustmentType === pending.type &&
+        Number(card.dataset.segmentIndex || 0) === Number(pending.segmentIndex || 0);
+    });
+    if (!target) {
+      setRouteNotice("当前安排已更新，请重新选择要调整的项目。", "warning");
+      return;
+    }
     const panel = document.createElement("section");
-    panel.className = "detail-preview-panel";
+    panel.className = "inline-choice-panel";
     const content = document.createElement("div");
     const title = document.createElement("h2");
-    title.textContent = pending.label + "候选预览";
+    title.textContent = pending.label + "可选调整";
     const text = document.createElement("p");
-    text.textContent = pending.preview.candidate.name + "。预览不会修改 Main 或已保存快照。";
+    text.textContent = pending.preview.candidate.name + "。查看不会修改当前方案或已保存版本。";
     const impacts = document.createElement("div");
     impacts.className = "chip-row";
     impacts.append(
@@ -659,11 +635,11 @@
     );
     content.append(title, text, impacts);
     const actions = document.createElement("div");
-    actions.className = "detail-inline-actions";
+    actions.className = "inline-choice-actions";
     const cancel = document.createElement("button");
     cancel.type = "button";
     cancel.className = "ghost-btn";
-    cancel.textContent = "取消预览";
+    cancel.textContent = "取消查看";
     cancel.addEventListener("click", function () {
       state.detailCandidate = null;
       panel.remove();
@@ -671,12 +647,11 @@
     const adopt = document.createElement("button");
     adopt.type = "button";
     adopt.className = "primary-btn";
-    adopt.textContent = "采用并生成新版本";
+    adopt.textContent = "使用这个选择并保存为新版本";
     adopt.addEventListener("click", commitDetailCandidate);
     actions.append(cancel, adopt);
     panel.append(content, actions);
-    const controls = els.routeContent.querySelector(".detail-replan-section");
-    els.routeContent.insertBefore(panel, controls);
+    target.appendChild(panel);
   }
 
   function formatSigned(value) {
@@ -689,13 +664,13 @@
     const workspace = state.detailWorkspace;
     if (!pending || !workspace) return;
     if (pending.expectedVersion !== workspace.context.version) {
-      setRouteNotice("版本已变化，未覆盖当前稳定方案。请重新预览候选。", "warning");
+      setRouteNotice("版本已变化，未覆盖当前稳定方案。请重新查看可选调整。", "warning");
       state.detailCandidate = null;
       return;
     }
     const outcome = candidateRuntime.commit(workspace.result, pending.switcher, pending.switcher.currentIndex);
     if (!outcome.ok) {
-      setRouteNotice("重排校验失败，已保留最后稳定方案。", "warning");
+      setRouteNotice("调整失败，已保留最后稳定方案。", "warning");
       return;
     }
     const nextContext = cloneValue(workspace.context);
@@ -712,8 +687,8 @@
     if (!commit.ok) {
       setRouteNotice(
         commit.error === "locked_success_block"
-          ? "该区块已模拟执行成功，不能重排。"
-          : "重排失败，已保留最后稳定方案。",
+          ? "这项安排已经确认完成，不能在这里直接修改。"
+          : "调整失败，已保留最后稳定方案。",
         "warning"
       );
       return;
@@ -729,8 +704,8 @@
     if (!outcome.ok) {
       setRouteNotice(
         outcome.error === "locked_success_block"
-          ? "该时间块关联区块已模拟执行成功，不能调整。"
-          : "时间重排失败，已保留最后稳定方案。",
+          ? "这段时间关联的安排已经确认完成，不能在这里直接修改。"
+          : "时间调整失败，已保留最后稳定方案。",
         "warning"
       );
       return;
@@ -790,7 +765,7 @@
     panel.className = "reopen-policy-panel";
     const heading = document.createElement("div");
     heading.className = "section-heading";
-    heading.innerHTML = "<div><p class=\"section-kicker\">恢复策略</p><h2>按执行步骤恢复</h2></div>";
+    heading.innerHTML = "<div><p class=\"section-kicker\">后续处理</p><h2>确认未完成事项</h2></div>";
     const list = document.createElement("div");
     list.className = "reopen-step-list";
     workspace.selectedPayload.executionSummary.steps.forEach(function (step) {
@@ -806,11 +781,11 @@
       action.type = "button";
       action.className = "ghost-btn";
       action.disabled = step.status === "success";
-      action.textContent = step.status === "success" ? "执行快照只读" : reopenActionLabel(step.status);
+      action.textContent = step.status === "success" ? "已完成，不能修改" : reopenActionLabel(step.status);
       action.addEventListener("click", function () {
         requestMockRefresh(step);
       });
-      row.append(content, makeTag(step.status, step.status === "success" ? "green" : "amber"), action);
+      row.append(content, makeTag(reopenStatusLabel(step.status), reopenStatusTone(step.status)), action);
       list.appendChild(row);
     });
     panel.append(heading, list);
@@ -819,26 +794,45 @@
 
   function reopenBehaviorLabel(behavior) {
     const labels = {
-      readonly_execution_snapshot: "保留执行时价格、时间和结果，只读锁定。",
-      refresh_latest_mock_state: "可刷新最新 Mock 状态，确认后进入编辑副本。",
-      refresh_and_offer_alternative: "刷新 Mock 状态，并允许选择替代候选。",
-      allow_replan: "允许重新规划该未执行区块。",
-      preserve_and_allow_manual_refresh: "保留原信息，可手动刷新 Mock 状态。",
+      readonly_execution_snapshot: "已确认的价格、时间和结果会保留，不能在这里直接修改。",
+      refresh_latest_mock_state: "可以重新确认当前结果，确认后作为未保存调整继续处理。",
+      refresh_and_offer_alternative: "可以重新确认当前结果，如不可用会提供替代选择。",
+      allow_replan: "该事项尚未完成，可以重新规划。",
+      preserve_and_allow_manual_refresh: "先保留原安排，也可以手动重新确认。",
     };
     return labels[behavior] || "保留当前稳定状态。";
   }
 
   function reopenActionLabel(status) {
-    if (status === "failed_recoverable") return "刷新并查看替代";
+    if (status === "failed_recoverable") return "重新确认并查看替代";
     if (status === "cancelled") return "重新规划";
-    return "刷新 Mock 状态";
+    return "重新确认状态";
+  }
+
+  function reopenStatusLabel(status) {
+    const labels = {
+      success: "已完成",
+      pending: "待确认",
+      failed_recoverable: "需处理",
+      cancelled: "已取消",
+      skipped: "暂不处理",
+      blocked: "受阻",
+      running: "处理中",
+    };
+    return labels[status] || "待确认";
+  }
+
+  function reopenStatusTone(status) {
+    if (status === "success") return "green";
+    if (status === "failed_recoverable" || status === "blocked") return "red";
+    return "amber";
   }
 
   function requestMockRefresh(step) {
     if (step.status === "success") return;
     state.pendingMockRefresh = cloneValue(step);
     els.refreshConfirmCopy.textContent =
-      "此操作不会覆盖已保存快照，只会把“" + step.title + "”的模拟刷新结果应用到当前编辑副本，并标记为未保存。";
+      "此操作不会覆盖已保存版本，只会把“" + step.title + "”的最新确认结果应用到当前方案，并标记为未保存。";
     openModal(els.refreshConfirmModal, els.refreshConfirmApply);
   }
 
@@ -1120,7 +1114,7 @@
       const direction = action.type === "preview_previous_candidate" ? "previous" : "next";
       state.v5CandidateSwitchers[switcher.key] = candidateRuntime.move(switcher, direction);
       refreshV5FromLegacy("candidate_preview");
-      state.v5Notice = "正在预览候选，Main 方案尚未修改";
+      state.v5Notice = "正在预览候选，当前方案尚未修改";
       render();
       return;
     }
@@ -1701,7 +1695,9 @@
     });
   }
 
-  function createPlanCard(plan) {
+  function createPlanCard(plan, options) {
+    const opts = options || {};
+    const detailWorkspace = opts.detailWorkspace || null;
     const card = document.createElement("article");
     card.className = "plan-card" + (plan.id === state.selectedPlanId ? " selected" : "");
     card.dataset.planId = plan.id;
@@ -1726,31 +1722,39 @@
 
     const grid = document.createElement("div");
     grid.className = "plan-grid";
-    grid.append(
-      createInfoBox("活动", plan.activity.name, [
-        plan.activity.type,
-        plan.activity.distance,
-        plan.activity.price,
-        plan.activity.needsBooking ? (plan.activity.canBook ? "可预约 " + plan.activity.selectedSlot : "暂无可预约时段") : "无需预约",
-        plan.activity.tags.join(" / "),
-      ]),
-      createInfoBox("餐厅", plan.restaurant.name, [
-        plan.restaurant.cuisine,
-        plan.restaurant.distance,
-        plan.restaurant.price,
-        "排队 " + plan.restaurant.wait,
-        plan.restaurant.canReserve ? "可预约 " + plan.restaurant.selectedSlot : "暂无可预约时段",
-        plan.restaurant.tags.join(" / "),
-      ])
-    );
+    const activityBox = createInfoBox("活动", plan.activity.name, [
+      plan.activity.type,
+      plan.activity.distance,
+      plan.activity.price,
+      plan.activity.needsBooking ? (plan.activity.canBook ? "可预约 " + plan.activity.selectedSlot : "暂无可预约时段") : "无需预约",
+      plan.activity.tags.join(" / "),
+    ]);
+    const restaurantBox = createInfoBox("餐厅", plan.restaurant.name, [
+      plan.restaurant.cuisine,
+      plan.restaurant.distance,
+      plan.restaurant.price,
+      "排队 " + plan.restaurant.wait,
+      plan.restaurant.canReserve ? "可预约 " + plan.restaurant.selectedSlot : "暂无可预约时段",
+      plan.restaurant.tags.join(" / "),
+    ]);
+    if (detailWorkspace) {
+      activityBox.appendChild(createReplanControlCard(detailWorkspace, "activity", "活动", 0, { inline: true }));
+      restaurantBox.appendChild(createReplanControlCard(detailWorkspace, "restaurant", "餐厅", 0, { inline: true }));
+    }
+    grid.append(activityBox, restaurantBox);
+    if (detailWorkspace) {
+      createDetailTransportBoxes(detailWorkspace, plan).forEach(function (transportBox) {
+        grid.appendChild(transportBox);
+      });
+    }
 
     const timeline = document.createElement("div");
-    timeline.className = "timeline";
+    timeline.className = "timeline" + (detailWorkspace ? " detail-timeline" : "");
     const timelineTitle = document.createElement("h3");
-    timelineTitle.textContent = "时间表";
+    timelineTitle.textContent = detailWorkspace ? "时间表与时间块调整" : "时间表";
     const timelineList = document.createElement("ol");
     timelineList.className = "timeline-list";
-    plan.timeline.forEach(function (item) {
+    plan.timeline.forEach(function (item, index) {
       const row = document.createElement("li");
       row.className = "timeline-item";
       row.innerHTML =
@@ -1758,6 +1762,11 @@
       row.querySelector(".time").textContent = item.time;
       row.querySelector(".timeline-title").textContent = item.title;
       row.querySelector(".timeline-detail").textContent = item.detail;
+      if (detailWorkspace) {
+        row.querySelector(".timeline-detail").parentElement.appendChild(
+          createTimelineAdjustControl(detailWorkspace, item, index)
+        );
+      }
       timelineList.appendChild(row);
     });
     timeline.append(timelineTitle, timelineList);
@@ -1794,11 +1803,13 @@
     const detail = document.createElement("button");
     detail.className = "secondary-btn plan-detail-btn";
     detail.type = "button";
-    detail.textContent = "查看详情与局部重排";
+    detail.textContent = "查看详情与调整安排";
     detail.addEventListener("click", function () {
       openPlanDetail(plan.id);
     });
-    actions.append(preview, detail, select);
+    actions.appendChild(preview);
+    if (!opts.hideDetailAction) actions.appendChild(detail);
+    actions.appendChild(select);
 
     const blocks = [head];
     if (issueNotices) blocks.push(issueNotices);
@@ -1810,6 +1821,46 @@
     return card;
   }
 
+  function createDetailTransportBoxes(workspace, plan) {
+    return (plan.route || []).slice(0, 2).map(function (routeText, segmentIndex) {
+      const label = segmentIndex === 0 ? "第一段交通" : "第二段交通";
+      const card = findSelectedBlockCard(workspace, "transport", segmentIndex);
+      const meta = card && card.meta ? card.meta : {};
+      const facts = [
+        meta.routeLabel,
+        meta.modeLabel,
+        meta.durationText,
+        meta.budgetText,
+      ].filter(Boolean);
+      const summaryText = routeText || (card && card.summaryText) || "交通待确认";
+      const box = createInfoBox(label, summaryText, facts.length ? facts : ["稳定路线估算"]);
+      box.appendChild(createReplanControlCard(workspace, "transport", label, segmentIndex, { inline: true }));
+      return box;
+    });
+  }
+
+  function createTimelineAdjustControl(workspace, item, index) {
+    const wrap = document.createElement("div");
+    wrap.className = "timeline-replan-inline";
+    const timelineItem = (workspace.selectedPayload.timeline || [])[index];
+    const locked = timelineItem && savedPlans.isRefLocked(
+      { selectedPlan: workspace.selectedPayload },
+      timelineItem.entityRef
+    );
+    const hint = document.createElement("span");
+    hint.textContent = locked ? "相关安排已确认完成，不能在这里直接修改。" : "只调整这一项及后续时间。";
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = locked ? "ghost-btn" : "secondary-btn";
+    button.disabled = Boolean(locked);
+    button.textContent = locked ? "已确认" : "后移 15 分钟";
+    button.addEventListener("click", function () {
+      commitTimelineAdjustment(index);
+    });
+    wrap.append(hint, button);
+    return wrap;
+  }
+
   function decoratePlanDetailEntrances() {
     Array.from(els.plans.querySelectorAll(".plan-card[data-plan-id]")).forEach(function (card) {
       if (card.querySelector(".plan-detail-btn")) return;
@@ -1819,7 +1870,7 @@
       const detail = document.createElement("button");
       detail.type = "button";
       detail.className = "secondary-btn plan-detail-btn";
-      detail.textContent = "查看详情与局部重排";
+      detail.textContent = "查看详情与调整安排";
       detail.addEventListener("click", function () {
         openPlanDetail(planId);
       });
