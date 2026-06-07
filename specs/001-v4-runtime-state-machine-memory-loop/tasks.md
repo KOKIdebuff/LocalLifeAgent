@@ -193,10 +193,10 @@ expanding V5 P0 or adding Execution task/step ownership.
 Execution may start as a separate module in the same FastAPI application; P1
 does not require a separate process or distributed transaction.
 
-- [ ] T069 [P1-A] Define independent Execution model, state machine, repositories, and create/query/advance/cancel API
-- [ ] T070 [P1-B] Add Step Attempt history, failure classification, bounded retry, timeout, idempotency, and plan-version gate
-- [ ] T071 [P1-C] Integrate Execution with Runtime through stable adapters and authoritative summary Events
-- [ ] T072 Add Execution transition, stale-plan rejection, duplicate-advance, retry-limit, cancellation, Mock-boundary, and Runtime-summary consistency tests
+- [x] T069 [P1-A] Define independent Execution model, state machine, repositories, and create/query/advance/cancel API
+- [x] T070 [P1-B] Add Step Attempt history, failure classification, bounded retry, timeout, idempotency, and plan-version gate
+- [x] T071 [P1-C] Integrate Execution with Runtime through stable adapters and authoritative summary Events
+- [x] T072 Add Execution transition, stale-plan rejection, duplicate-advance, retry-limit, cancellation, Mock-boundary, and Runtime-summary consistency tests
 
 Deferred beyond P1: background workers, outbox, distributed scheduling,
 multi-instance execution, and external action compensation.

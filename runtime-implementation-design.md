@@ -64,6 +64,19 @@ V4 Runtime P1 starts after P0 is stable. It may add:
 P1 may initially live in the same FastAPI process. It does not require a
 separate worker, outbox, distributed scheduler, or distributed transaction.
 
+Current implementation status:
+
+- P1-A Execution model, repositories, and create/query/advance/cancel API are
+  implemented in `execution/` and `/api/executions*`.
+- P1-B step attempt count, bounded retry, idempotency, and plan-version gate are
+  implemented.
+- P1-C Runtime summary Event integration is implemented through stable
+  Execution -> Runtime summary Events. Execution still owns Task/Step state;
+  Runtime records only summary Events and `activeExecutionId`.
+- Delivery grouping is tracked in `RUNTIME_EXECUTION_DELIVERY_AUDIT.md` so
+  Runtime/Execution changes can be reviewed separately from UI and saved-plan
+  worktree changes.
+
 ### 2.3 Out of Scope
 
 P0 does not implement:

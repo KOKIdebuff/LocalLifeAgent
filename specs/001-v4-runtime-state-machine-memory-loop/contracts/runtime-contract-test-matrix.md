@@ -68,6 +68,20 @@ frontend-independent consumption without changing current planning behavior.
 | Execution ownership | execution boundary | V4 P0 stores only Execution references and summary Events; task/step lifecycle is an independent P1 domain |
 | Replay boundary | state-machine source | P0 supports Event query and latest recovery restore, not business replay |
 
+## Execution P1
+
+| Case | Contract source | Expected result |
+| --- | --- | --- |
+| Independent Execution domain | `execution/` and API routes | Execution owns create/query/advance/cancel and does not mutate Runtime business state |
+| Step lifecycle ownership | Execution repositories | Step state, attempt count, retry, blocking, cancellation, and completion are persisted under Execution tables |
+| Runtime summary integration | Runtime Event stream | Execution writes only summary Events and `activeExecutionId` into Runtime |
+| Terminal protection | Execution state machine | completed, failed, and cancelled executions reject future advance/cancel writes |
+| Blocked protection | Execution state machine | blocked executions reject further advance until an explicit future flow exists |
+| Version gate | Execution write input | stale execution version produces `execution_version_conflict` |
+| Plan-version gate | Execution write input | stale plan version produces `execution_plan_version_conflict` |
+| Summary payload boundary | Runtime payload allowlist | Runtime summary Events reject UI fields and oversized payloads without partial writes |
+| Legacy protection | legacy golden fixtures | feature flag off keeps legacy `POST /api/runtime` golden behavior stable |
+
 ## V5 Runtime Projection
 
 | Case | Contract source | Expected result |
