@@ -90,6 +90,20 @@ assert.deepStrictEqual(
   lifecycle.parseRoute("/saved-plans/44444444-4444-4444-8444-444444444444"),
   { name: "saved-plan-detail", snapshotId: "44444444-4444-4444-8444-444444444444" }
 );
+assert.deepStrictEqual(lifecycle.parseRoute("/executions"), { name: "executions" });
+assert.deepStrictEqual(
+  lifecycle.parseRoute("/executions/exec_123"),
+  { name: "execution-detail", executionId: "exec_123" }
+);
+assert.deepStrictEqual(lifecycle.parseRoute("/collaboration"), { name: "collaboration" });
+assert.deepStrictEqual(
+  lifecycle.parseRoute("/collaboration/share_123"),
+  { name: "collaboration-detail", shareId: "share_123" }
+);
+assert.deepStrictEqual(
+  lifecycle.parseRoute("/share/share_123"),
+  { name: "share-detail", shareId: "share_123" }
+);
 
 assert.strictEqual(lifecycle.getReopenBehavior("success"), "readonly_execution_snapshot");
 assert.strictEqual(lifecycle.getReopenBehavior("pending"), "refresh_latest_mock_state");
@@ -112,6 +126,13 @@ const workspace = {
   undoWorkspace: null,
   lastChange: null,
 };
+
+assert.strictEqual(lifecycle.savePlanWorkspace(storage, workspace), true);
+const savedVersionWorkspace = lifecycle.clone(workspace);
+savedVersionWorkspace.selectedPlanId = "another-plan";
+savedVersionWorkspace.sourceSnapshotId = snapshot.snapshotId;
+lifecycle.saveWorkspace(storage, savedVersionWorkspace);
+assert.strictEqual(lifecycle.loadPlanWorkspace(storage, selectedPlanId).selectedPlanId, selectedPlanId);
 
 const lockedSwitcher = candidateRuntime.create(workspace.result, {
   key: selectedPlanId + ":activity",

@@ -36,16 +36,37 @@ assert.ok(
 assert.ok(app.includes("decorateCandidateSwitchers"), "app must decorate cards with session-local candidate state");
 assert.ok(styles.includes(".candidate-switcher"), "candidate switcher interaction styles must exist");
 assert.ok(html.includes('data-route-link="/saved-plans"'), "saved plans route must be reachable from the shared header");
+assert.ok(html.includes('data-route-link="/collaboration"'), "collaboration route must be reachable from the shared header");
+assert.ok(html.includes('data-route-link="/executions"'), "execution center route must be reachable from the shared header");
 assert.ok(html.includes('id="route-page"'), "secondary route shell must exist");
 assert.ok(html.indexOf('src="/saved-plans.js"') < html.indexOf('src="/app.js"'), "saved plan runtime must load before app.js");
 assert.ok(app.includes("renderSavedPlansPage"), "app must render the saved plan list route");
 assert.ok(app.includes("renderPlanDetailPage"), "app must render plan detail routes");
+assert.ok(app.includes("renderExecutionsPage"), "app must render the execution list route");
+assert.ok(app.includes("renderExecutionDetailPage"), "app must render execution detail routes");
+assert.ok(app.includes("renderCollaborationPage"), "app must render the collaboration list route");
+assert.ok(app.includes("renderCollaborationDetailPage"), "app must render owner collaboration detail routes");
+assert.ok(app.includes("renderSharePage"), "app must render collaborator share routes");
+assert.ok(app.includes('fetch("/api/executions"'), "execution creation must use the existing backend API");
+assert.ok(app.includes('"/api/executions/" + encodeURIComponent'), "execution detail and mutations must use existing execution endpoints");
+assert.ok(app.includes("localLife.executionIndex.v1"), "execution list must use a lightweight local index");
+assert.ok(app.includes('"/api/plans/" + encodeURIComponent(workspace.selectedPlanId) + "/share"'), "share creation must use the local collaboration API");
+assert.ok(app.includes('"/api/shares/" + encodeURIComponent(shareId) + "/owner"'), "owner collaboration detail must read from the API");
+assert.ok(app.includes('"/api/shares/" + encodeURIComponent(shareId) + "/feedback?token="'), "share feedback must submit through the local API");
+assert.ok(app.includes("localLife.collaborationIndex.v1"), "owner collaboration list must use only a lightweight local index");
+assert.ok(app.includes("findBlockingCollaboration"), "execution entry must check collaboration feedback before starting");
+assert.ok(app.includes("根据反馈生成新方案"), "Plan Branch next slice entry must remain disabled in this slice");
 assert.ok(app.includes("查看详情与调整安排"), "selected plans must expose a visible detail and adjustment entry");
 assert.ok(app.includes("createDetailTransportBoxes"), "plan detail must show transport blocks inside the plan card");
 assert.ok(app.includes("createTimelineAdjustControl"), "timeline replan controls must sit on timeline rows");
 assert.ok(styles.includes(".inline-replan-control"), "detail replan controls must be embedded inside affected blocks");
 assert.ok(app.includes("target.appendChild(panel)"), "choice preview must render inside the clicked adjustment block");
 assert.ok(!app.includes('querySelector(".detail-plan-card")'), "choice preview must not jump to the top of the plan card");
+assert.ok(app.includes("adjustment-control-content"), "adjustment controls must have a replaceable default state");
+assert.ok(app.includes('targetControl.classList.add("hidden")'), "clicked adjustment control must be hidden while showing the alternative");
+assert.ok(app.includes('targetControl.classList.remove("hidden")'), "canceling the alternative must restore the original control");
+assert.ok(app.includes("savePlanWorkspace"), "plan detail route must persist workspaces by plan id");
+assert.ok(app.includes("restorePlanFromSavedVersion"), "plan detail route must recover from saved versions when local detail state is missing");
 [
   "可刷新最新 Mock 状态",
   "刷新 Mock 状态",

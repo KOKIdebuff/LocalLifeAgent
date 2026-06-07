@@ -7,6 +7,7 @@
 
   const STORAGE_KEY = "localLife.savedPlans.v1";
   const WORKSPACE_KEY = "localLife.planWorkspace.v1";
+  const PLAN_WORKSPACES_KEY = "localLife.planWorkspaces.v1";
   const SNAPSHOT_WORKSPACES_KEY = "localLife.savedPlanWorkspaces.v1";
   const REOPEN_BEHAVIORS = Object.freeze({
     success: "readonly_execution_snapshot",
@@ -48,7 +49,15 @@
     if (match) return { name: "plan-detail", planId: decodeURIComponent(match[1]) };
     match = path.match(/^\/saved-plans\/([^/]+)$/);
     if (match) return { name: "saved-plan-detail", snapshotId: decodeURIComponent(match[1]) };
+    match = path.match(/^\/executions\/([^/]+)$/);
+    if (match) return { name: "execution-detail", executionId: decodeURIComponent(match[1]) };
+    match = path.match(/^\/collaboration\/([^/]+)$/);
+    if (match) return { name: "collaboration-detail", shareId: decodeURIComponent(match[1]) };
+    match = path.match(/^\/share\/([^/]+)$/);
+    if (match) return { name: "share-detail", shareId: decodeURIComponent(match[1]) };
     if (path === "/saved-plans") return { name: "saved-plans" };
+    if (path === "/executions") return { name: "executions" };
+    if (path === "/collaboration") return { name: "collaboration" };
     return { name: "home" };
   }
 
@@ -78,6 +87,22 @@
 
   function loadWorkspace(storage) {
     return safeRead(storage, WORKSPACE_KEY, null);
+  }
+
+  function savePlanWorkspace(storage, workspace) {
+    if (!workspace || !workspace.selectedPlanId) return false;
+    const workspaces = safeRead(storage, PLAN_WORKSPACES_KEY, {});
+    workspaces[workspace.selectedPlanId] = clone(workspace);
+    return safeWrite(storage, PLAN_WORKSPACES_KEY, workspaces);
+  }
+
+  function loadPlanWorkspace(storage, planId) {
+    const workspaces = safeRead(storage, PLAN_WORKSPACES_KEY, {});
+    if (workspaces[planId]) return clone(workspaces[planId]);
+    const legacy = loadWorkspace(storage);
+    return legacy && legacy.selectedPlanId === planId && !legacy.sourceSnapshotId
+      ? clone(legacy)
+      : null;
   }
 
   function listSnapshots(storage) {
@@ -500,6 +525,7 @@
   return {
     STORAGE_KEY: STORAGE_KEY,
     WORKSPACE_KEY: WORKSPACE_KEY,
+    PLAN_WORKSPACES_KEY: PLAN_WORKSPACES_KEY,
     SNAPSHOT_WORKSPACES_KEY: SNAPSHOT_WORKSPACES_KEY,
     FORBIDDEN_CANDIDATE_FIELDS: FORBIDDEN_CANDIDATE_FIELDS,
     REOPEN_BEHAVIORS: REOPEN_BEHAVIORS,
@@ -507,6 +533,8 @@
     parseRoute: parseRoute,
     saveWorkspace: saveWorkspace,
     loadWorkspace: loadWorkspace,
+    savePlanWorkspace: savePlanWorkspace,
+    loadPlanWorkspace: loadPlanWorkspace,
     listSnapshots: listSnapshots,
     getSnapshot: getSnapshot,
     storeSnapshot: storeSnapshot,

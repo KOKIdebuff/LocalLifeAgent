@@ -32,6 +32,9 @@
     partyChanged: { replanEvent: "party_changed" },
   };
 
+  const EXECUTION_INDEX_KEY = "localLife.executionIndex.v1";
+  const COLLABORATION_INDEX_KEY = "localLife.collaborationIndex.v1";
+
   const stageDefs = [
     { id: "understand", label: "理解需求" },
     { id: "planner", label: "确认信息" },
@@ -64,6 +67,8 @@
     detailWorkspace: null,
     detailCandidate: null,
     pendingMockRefresh: null,
+    activeExecution: null,
+    activeShare: null,
   };
 
   const els = {
@@ -277,9 +282,13 @@
   }
 
   function navigateTo(path) {
-    const search = window.location.search || "";
-    window.history.pushState({}, "", path + search);
-    state.route = savedPlans.parseRoute(path);
+    const hasSearch = String(path).indexOf("?") >= 0;
+    const currentSearch = window.location.search || "";
+    const preserveSearch = currentSearch && currentSearch.indexOf("token=") < 0;
+    const search = hasSearch || !preserveSearch ? "" : currentSearch;
+    const target = path + search;
+    window.history.pushState({}, "", target);
+    state.route = savedPlans.parseRoute(String(path).split("?")[0]);
     renderRoute();
   }
 
@@ -297,6 +306,167 @@
     }
     els.routeNotice.className = "route-notice " + (tone || "");
     els.routeNotice.textContent = message;
+  }
+
+  function safeReadJson(key, fallback) {
+    try {
+      const value = window.localStorage.getItem(key);
+      return value ? JSON.parse(value) : fallback;
+    } catch (error) {
+      return fallback;
+    }
+  }
+
+  function safeWriteJson(key, value) {
+    try {
+      window.localStorage.setItem(key, JSON.stringify(value));
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function createClientId(prefix) {
+    if (window.crypto && typeof window.crypto.randomUUID === "function") {
+      return prefix + "-" + window.crypto.randomUUID();
+    }
+    return prefix + "-" + Date.now() + "-" + Math.random().toString(16).slice(2);
+  }
+
+  function listExecutionIndex() {
+    const records = safeReadJson(EXECUTION_INDEX_KEY, []);
+    return Array.isArray(records)
+      ? records.sort(function (left, right) {
+        return String(right.createdAt || "").localeCompare(String(left.createdAt || ""));
+      })
+      : [];
+  }
+
+  function getExecutionIndexRecord(executionId) {
+    return listExecutionIndex().find(function (record) {
+      return record.executionId === executionId;
+    }) || null;
+  }
+
+  function storeExecutionIndexRecord(record) {
+    const records = listExecutionIndex().filter(function (item) {
+      return item.executionId !== record.executionId;
+    });
+    records.push(Object.assign({}, record, { updatedAt: new Date().toISOString() }));
+    safeWriteJson(EXECUTION_INDEX_KEY, records.slice(0, 30));
+  }
+
+  function updateExecutionIndexFromRun(execution, fallback) {
+    if (!execution || !execution.executionId) return;
+    const existing = getExecutionIndexRecord(execution.executionId) || {};
+    storeExecutionIndexRecord(Object.assign({}, existing, fallback || {}, {
+      executionId: execution.executionId,
+      planId: execution.planId,
+      planVersion: execution.planVersion,
+      status: execution.status,
+      createdAt: execution.createdAt || existing.createdAt || new Date().toISOString(),
+      stepCount: execution.steps ? execution.steps.length : existing.stepCount || 0,
+      currentStepId: execution.currentStepId,
+    }));
+  }
+
+  function executionStatusLabel(status) {
+    const labels = {
+      active: "进行中",
+      completed: "已完成",
+      blocked: "需处理",
+      failed: "未完成",
+      cancelled: "已取消",
+    };
+    return labels[status] || "待处理";
+  }
+
+  function executionTone(status) {
+    if (status === "completed") return "green";
+    if (status === "blocked" || status === "failed") return "red";
+    if (status === "cancelled") return "amber";
+    return "blue";
+  }
+
+  function stepStatusLabel(status) {
+    const labels = {
+      active: "当前步骤",
+      pending: "待处理",
+      succeeded: "已完成",
+      failed: "需处理",
+      skipped: "暂不处理",
+      blocked: "受阻",
+    };
+    return labels[status] || "待处理";
+  }
+
+  function isExecutionTerminal(status) {
+    return ["completed", "failed", "cancelled"].indexOf(status) >= 0;
+  }
+
+  function listCollaborationIndex() {
+    const records = safeReadJson(COLLABORATION_INDEX_KEY, []);
+    return Array.isArray(records)
+      ? records.sort(function (left, right) {
+        return String(right.updatedAt || right.createdAt || "").localeCompare(String(left.updatedAt || left.createdAt || ""));
+      })
+      : [];
+  }
+
+  function getCollaborationIndexRecord(shareId) {
+    return listCollaborationIndex().find(function (record) {
+      return record.shareId === shareId;
+    }) || null;
+  }
+
+  function storeCollaborationIndexRecord(record) {
+    const records = listCollaborationIndex().filter(function (item) {
+      return item.shareId !== record.shareId;
+    });
+    records.push(Object.assign({}, record, { updatedAt: new Date().toISOString() }));
+    safeWriteJson(COLLABORATION_INDEX_KEY, records.slice(0, 30));
+  }
+
+  function updateCollaborationIndexFromState(data, fallback) {
+    if (!data || !data.share || !data.share.shareId) return;
+    const share = data.share;
+    const existing = getCollaborationIndexRecord(share.shareId) || {};
+    storeCollaborationIndexRecord(Object.assign({}, existing, fallback || {}, {
+      shareId: share.shareId,
+      planId: share.planId,
+      planName: share.planName || existing.planName,
+      planVersion: share.planVersion,
+      status: share.status,
+      createdAt: share.createdAt || existing.createdAt || new Date().toISOString(),
+      expiresAt: share.expiresAt,
+      reviewerCount: data.reviewers ? data.reviewers.length : existing.reviewerCount || 0,
+      feedbackCount: data.feedback ? data.feedback.length : existing.feedbackCount || 0,
+      needsOwnerReview: Boolean(data.needsOwnerReview),
+    }));
+  }
+
+  function collaborationStatusLabel(record) {
+    if (!record) return "待同步";
+    if (record.needsOwnerReview) return "需确认";
+    if (record.feedbackCount) return "已有反馈";
+    if (record.reviewerCount) return "已查看";
+    return "等待查看";
+  }
+
+  function collaborationTone(record) {
+    if (record && record.needsOwnerReview) return "red";
+    if (record && record.feedbackCount) return "amber";
+    if (record && record.reviewerCount) return "green";
+    return "blue";
+  }
+
+  function findBlockingCollaboration(workspace) {
+    if (!workspace) return null;
+    return listCollaborationIndex().find(function (record) {
+      return record.planId === workspace.selectedPlanId &&
+        Number(record.planVersion || 1) === Number(workspace.context && workspace.context.version || 1) &&
+        record.needsOwnerReview;
+    }) || null;
   }
 
   function createLifecyclePayload(result, context) {
@@ -343,7 +513,23 @@
   function persistDetailWorkspace() {
     if (savedPlans && state.detailWorkspace) {
       savedPlans.saveWorkspace(window.localStorage, state.detailWorkspace);
+      if (!state.detailWorkspace.sourceSnapshotId && savedPlans.savePlanWorkspace) {
+        savedPlans.savePlanWorkspace(window.localStorage, state.detailWorkspace);
+      }
     }
+  }
+
+  function snapshotMatchesPlan(snapshot, planId) {
+    return Boolean(snapshot && snapshot.selectedPlan && (snapshot.selectedPlan.cards || []).some(function (card) {
+      return card.type === "plan_summary" && card.meta && card.meta.legacyPlanId === planId;
+    }));
+  }
+
+  function restorePlanFromSavedVersion(planId) {
+    const snapshot = savedPlans.listSnapshots(window.localStorage).find(function (item) {
+      return snapshotMatchesPlan(item, planId);
+    });
+    return snapshot ? loadSavedDetailWorkspace(snapshot) : null;
   }
 
   function restoreDetailWorkspace(planId) {
@@ -353,8 +539,11 @@
     if (state.result && state.result.plans.some(function (plan) { return plan.id === planId; })) {
       return createDetailWorkspace(planId);
     }
-    const stored = savedPlans.loadWorkspace(window.localStorage);
-    return stored && stored.selectedPlanId === planId ? stored : null;
+    const stored = savedPlans.loadPlanWorkspace
+      ? savedPlans.loadPlanWorkspace(window.localStorage, planId)
+      : savedPlans.loadWorkspace(window.localStorage);
+    if (stored && stored.selectedPlanId === planId) return stored;
+    return restorePlanFromSavedVersion(planId);
   }
 
   function renderRoute() {
@@ -367,12 +556,34 @@
       if (!link.classList.contains("nav-item")) return;
       const active = state.route.name === "home"
         ? link.dataset.routeLink === "/"
-        : state.route.name.indexOf("saved-plan") === 0 && link.dataset.routeLink === "/saved-plans";
+        : (state.route.name.indexOf("saved-plan") === 0 && link.dataset.routeLink === "/saved-plans") ||
+          (state.route.name.indexOf("execution") === 0 && link.dataset.routeLink === "/executions") ||
+          (state.route.name.indexOf("collaboration") === 0 && link.dataset.routeLink === "/collaboration");
       link.classList.toggle("active", active);
     });
     if (!secondary) return;
     if (state.route.name === "saved-plans") {
       renderSavedPlansPage();
+      return;
+    }
+    if (state.route.name === "executions") {
+      renderExecutionsPage();
+      return;
+    }
+    if (state.route.name === "execution-detail") {
+      renderExecutionDetailPage(state.route.executionId);
+      return;
+    }
+    if (state.route.name === "collaboration") {
+      renderCollaborationPage();
+      return;
+    }
+    if (state.route.name === "collaboration-detail") {
+      renderCollaborationDetailPage(state.route.shareId);
+      return;
+    }
+    if (state.route.name === "share-detail") {
+      renderSharePage(state.route.shareId);
       return;
     }
     renderPlanDetailPage();
@@ -428,6 +639,757 @@
     });
   }
 
+  function renderExecutionsPage() {
+    const records = listExecutionIndex();
+    els.routeBreadcrumbCurrent.textContent = "执行记录";
+    els.routeKicker.textContent = "EXECUTION CENTER";
+    els.routeTitle.textContent = "执行记录";
+    els.routeSubtitle.textContent = "集中查看已经开始处理的方案，继续下一步或取消未完成的执行。";
+    els.routeActions.innerHTML = "";
+    els.routeContent.innerHTML = "";
+    setRouteNotice("", "");
+    if (!records.length) {
+      els.routeContent.className = "route-content empty-state execution-empty-state";
+      const title = document.createElement("h2");
+      title.textContent = "还没有开始执行的方案";
+      const text = document.createElement("p");
+      text.textContent = "从工作台、行程详情或已保存版本里点击“开始执行”，这里会保留进度记录。";
+      const back = document.createElement("button");
+      back.type = "button";
+      back.className = "primary-btn";
+      back.textContent = "回到工作台";
+      back.addEventListener("click", function () {
+        navigateTo("/");
+      });
+      els.routeContent.append(title, text, back);
+      return;
+    }
+    els.routeContent.className = "route-content execution-list";
+    records.forEach(function (record) {
+      const card = document.createElement("article");
+      card.className = "execution-record-card";
+      const status = document.createElement("div");
+      status.className = "execution-record-status " + (record.status || "active");
+      status.append(
+        makeTag(executionStatusLabel(record.status), executionTone(record.status)),
+        document.createElement("span")
+      );
+      status.lastChild.textContent = record.stepCount ? record.stepCount + " 个事项" : "待同步";
+
+      const content = document.createElement("div");
+      content.className = "execution-record-main";
+      const title = document.createElement("h2");
+      title.textContent = record.planName || "未命名方案";
+      const meta = document.createElement("p");
+      meta.className = "execution-meta";
+      meta.textContent = [
+        "版本 " + (record.planVersion || 1),
+        record.createdAt ? new Date(record.createdAt).toLocaleString("zh-CN") : "",
+      ].filter(Boolean).join(" · ");
+      const tags = document.createElement("div");
+      tags.className = "chip-row";
+      tags.append(
+        makeTag(record.updatedAt ? "最近更新 " + new Date(record.updatedAt).toLocaleString("zh-CN") : "刚刚创建", "blue"),
+        makeTag(isExecutionTerminal(record.status) ? "已结束" : "可继续", isExecutionTerminal(record.status) ? "green" : "amber")
+      );
+      content.append(title, meta, tags);
+      const open = document.createElement("button");
+      open.type = "button";
+      open.className = "secondary-btn";
+      open.textContent = "查看执行详情";
+      open.addEventListener("click", function () {
+        navigateTo("/executions/" + encodeURIComponent(record.executionId));
+      });
+      card.append(status, content, open);
+      els.routeContent.appendChild(card);
+    });
+  }
+
+  function renderExecutionDetailPage(executionId) {
+    const record = getExecutionIndexRecord(executionId);
+    els.routeBreadcrumbCurrent.textContent = "执行详情";
+    els.routeKicker.textContent = "EXECUTION DETAIL";
+    els.routeTitle.textContent = record && record.planName ? record.planName : "执行详情";
+    els.routeSubtitle.textContent = "执行结果只用于演示，不会产生真实订座、支付或消息发送。";
+    els.routeActions.innerHTML = "";
+    els.routeContent.className = "route-content";
+    els.routeContent.innerHTML = "";
+    setRouteNotice("正在读取执行进度...", "");
+    fetchExecutionDetail(executionId);
+  }
+
+  async function fetchExecutionDetail(executionId) {
+    try {
+      const response = await fetch("/api/executions/" + encodeURIComponent(executionId));
+      const data = await response.json();
+      if (!response.ok || !data.ok || !data.execution) {
+        throw new Error(data && data.error ? data.error : "execution_unavailable");
+      }
+      if (state.route.name !== "execution-detail" || state.route.executionId !== executionId) return;
+      state.activeExecution = data.execution;
+      updateExecutionIndexFromRun(data.execution, getExecutionIndexRecord(executionId) || {});
+      renderExecutionDetailContent(data.execution);
+    } catch (error) {
+      if (state.route.name !== "execution-detail" || state.route.executionId !== executionId) return;
+      setRouteNotice("暂时无法读取执行进度，已保留本地执行记录。", "warning");
+      els.routeContent.className = "route-content empty-state";
+      els.routeContent.textContent = "执行详情暂时不可用，请稍后重试。";
+    }
+  }
+
+  function renderExecutionDetailContent(execution) {
+    const record = getExecutionIndexRecord(execution.executionId) || {};
+    els.routeTitle.textContent = record.planName || "执行详情";
+    els.routeActions.innerHTML = "";
+    const back = document.createElement("button");
+    back.type = "button";
+    back.className = "ghost-btn";
+    back.textContent = "执行记录";
+    back.addEventListener("click", function () { navigateTo("/executions"); });
+    const next = document.createElement("button");
+    next.type = "button";
+    next.className = "primary-btn";
+    next.textContent = "继续下一步";
+    next.disabled = isExecutionTerminal(execution.status) || execution.status === "blocked";
+    next.addEventListener("click", function () {
+      advanceExecution(execution, "succeeded");
+    });
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.className = "ghost-btn";
+    cancel.textContent = "取消执行";
+    cancel.disabled = isExecutionTerminal(execution.status);
+    cancel.addEventListener("click", function () {
+      cancelExecution(execution);
+    });
+    els.routeActions.append(back, cancel, next);
+    setRouteNotice(
+      execution.status === "completed"
+        ? "执行已完成。结果仅用于演示，不代表真实外部操作。"
+        : "当前状态：" + executionStatusLabel(execution.status) + "。",
+      execution.status === "completed" ? "success" : ""
+    );
+
+    els.routeContent.className = "route-content";
+    els.routeContent.innerHTML = "";
+    els.routeContent.appendChild(createExecutionSummaryPanel(execution, record));
+    els.routeContent.appendChild(createExecutionStepList(execution));
+  }
+
+  function createExecutionSummaryPanel(execution, record) {
+    const panel = document.createElement("section");
+    panel.className = "execution-summary-panel";
+    const content = document.createElement("div");
+    content.className = "execution-summary-copy";
+    const title = document.createElement("h2");
+    title.textContent = "执行进度";
+    const text = document.createElement("p");
+    const steps = execution.steps || [];
+    const done = (execution.steps || []).filter(function (step) {
+      return step.status === "succeeded";
+    }).length;
+    const activeStep = steps.find(function (step) {
+      return step.status === "active";
+    });
+    text.textContent = activeStep
+      ? "当前要处理：" + activeStep.title
+      : done + " / " + steps.length + " 个事项已完成";
+    const tags = document.createElement("div");
+    tags.className = "chip-row";
+    tags.append(
+      makeTag(executionStatusLabel(execution.status), executionTone(execution.status)),
+      makeTag("版本 " + execution.planVersion, "blue"),
+      makeTag(record.createdAt ? new Date(record.createdAt).toLocaleString("zh-CN") : "刚刚开始")
+    );
+    content.append(title, text, tags);
+
+    const visual = document.createElement("div");
+    visual.className = "execution-progress-visual";
+    const percent = steps.length ? Math.round((done / steps.length) * 100) : 0;
+    const percentText = document.createElement("strong");
+    percentText.textContent = percent + "%";
+    const caption = document.createElement("span");
+    caption.textContent = done + " / " + steps.length + " 已完成";
+    const bar = document.createElement("div");
+    bar.className = "execution-progress-bar";
+    const fill = document.createElement("span");
+    fill.style.width = percent + "%";
+    bar.appendChild(fill);
+    visual.append(percentText, caption, bar);
+    panel.append(content, visual);
+    return panel;
+  }
+
+  function createExecutionStepList(execution) {
+    const list = document.createElement("section");
+    list.className = "execution-step-list";
+    const heading = document.createElement("div");
+    heading.className = "section-heading-actions";
+    const title = document.createElement("h2");
+    title.textContent = "处理事项";
+    const hint = document.createElement("span");
+    hint.textContent = isExecutionTerminal(execution.status) ? "本次执行已结束" : "按顺序确认，每次只推进当前事项";
+    heading.append(title, hint);
+    list.appendChild(heading);
+    (execution.steps || []).forEach(function (step) {
+      const row = document.createElement("article");
+      row.className = "execution-step " + step.status;
+      const marker = document.createElement("span");
+      marker.className = "execution-step-marker";
+      const content = document.createElement("div");
+      const title = document.createElement("h3");
+      title.textContent = step.title;
+      const text = document.createElement("p");
+      const copy = {
+        active: "这是当前要处理的事项。确认完成后，点击“继续下一步”。",
+        pending: "等待前面的事项完成后再处理。",
+        succeeded: "这个事项已经确认完成。",
+        failed: "这个事项没有完成，可以检查原因后重新处理。",
+        skipped: "这个事项暂时不处理。",
+        blocked: "这个事项需要先处理异常，再继续后续安排。",
+      };
+      text.textContent = copy[step.status] || "等待处理。";
+      content.append(title, text);
+      row.append(marker, content, makeTag(stepStatusLabel(step.status), step.status === "succeeded" ? "green" : step.status === "failed" || step.status === "blocked" ? "red" : "amber"));
+      list.appendChild(row);
+    });
+    return list;
+  }
+
+  async function advanceExecution(execution, outcome) {
+    await mutateExecution(
+      "/api/executions/" + encodeURIComponent(execution.executionId) + "/advance",
+      {
+        expectedVersion: execution.version,
+        planVersion: execution.planVersion,
+        idempotencyKey: createClientId("advance"),
+        outcome: outcome,
+        actor: "user",
+      },
+      execution.executionId
+    );
+  }
+
+  async function cancelExecution(execution) {
+    await mutateExecution(
+      "/api/executions/" + encodeURIComponent(execution.executionId) + "/cancel",
+      {
+        expectedVersion: execution.version,
+        idempotencyKey: createClientId("cancel"),
+        actor: "user",
+        reason: "用户取消",
+      },
+      execution.executionId
+    );
+  }
+
+  async function mutateExecution(url, payload, executionId) {
+    setRouteNotice("正在更新执行进度...", "");
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok || !data.execution) {
+        throw new Error(data && data.error ? data.error : "execution_update_failed");
+      }
+      updateExecutionIndexFromRun(data.execution, getExecutionIndexRecord(executionId) || {});
+      renderExecutionDetailContent(data.execution);
+    } catch (error) {
+      setRouteNotice("执行进度没有更新，请刷新后重试。", "warning");
+    }
+  }
+
+  function buildExecutionStepsFromActions(actions) {
+    const steps = (actions || []).map(function (action) {
+      return {
+        title: action.title || action.label || "确认一项安排",
+        maxAttempts: action.requiresConfirmation ? 2 : 1,
+      };
+    }).filter(function (step) {
+      return Boolean(step.title);
+    });
+    return steps.length ? steps : [{ title: "确认当前安排", maxAttempts: 1 }];
+  }
+
+  function buildExecutionStepsFromWorkspace(workspace, plan) {
+    if (workspace && workspace.result && plan) {
+      return buildExecutionStepsFromActions(core.createExecutionQueue(plan, workspace.result.parsed));
+    }
+    const actions = workspace && workspace.selectedPayload ? workspace.selectedPayload.actions : [];
+    return buildExecutionStepsFromActions(actions);
+  }
+
+  async function createExecutionRecord(options) {
+    const opts = options || {};
+    const response = await fetch("/api/executions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionId: opts.sessionId || null,
+        planId: opts.planId,
+        planVersion: opts.planVersion || 1,
+        idempotencyKey: opts.idempotencyKey || createClientId("execution"),
+        actor: "user",
+        steps: opts.steps,
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok || !data.ok || !data.execution) {
+      throw new Error(data && data.error ? data.error : "execution_create_failed");
+    }
+    updateExecutionIndexFromRun(data.execution, {
+      planName: opts.planName,
+      sourcePath: window.location.pathname,
+    });
+    return data.execution;
+  }
+
+  async function startExecutionFromWorkspace(workspace, plan, selected) {
+    if (!workspace) return;
+    const blockingShare = findBlockingCollaboration(workspace);
+    if (blockingShare) {
+      setRouteNotice("家人朋友有待确认反馈。请先进入协同反馈确认当前版本，再开始执行。", "warning");
+      return;
+    }
+    setRouteNotice("正在开始执行...", "");
+    try {
+      const execution = await createExecutionRecord({
+        sessionId: workspace.context && workspace.context.sessionId,
+        planId: workspace.selectedPlanId,
+        planVersion: workspace.context && workspace.context.version || 1,
+        planName: plan ? plan.name : selected && selected.name,
+        steps: buildExecutionStepsFromWorkspace(workspace, plan),
+      });
+      navigateTo("/executions/" + encodeURIComponent(execution.executionId));
+    } catch (error) {
+      setRouteNotice("暂时无法开始执行，请稍后重试。", "warning");
+    }
+  }
+
+  function buildShareSnapshot(workspace, plan, selected) {
+    return {
+      selectedPlan: cloneValue(selected),
+      candidateSummaries: cloneValue(workspace.candidateSummaries || []),
+      planName: plan ? plan.name : selected && selected.name,
+      savedAt: new Date().toISOString(),
+    };
+  }
+
+  async function createShareFromWorkspace(workspace, plan, selected) {
+    if (!workspace || !selected) return;
+    setRouteNotice("正在生成本地分享页...", "");
+    try {
+      const response = await fetch("/api/plans/" + encodeURIComponent(workspace.selectedPlanId) + "/share", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: workspace.context && workspace.context.sessionId || null,
+          lineageId: workspace.context && workspace.context.lineageId || null,
+          planVersion: workspace.context && workspace.context.version || 1,
+          planName: plan ? plan.name : selected.name,
+          snapshot: buildShareSnapshot(workspace, plan, selected),
+          idempotencyKey: createClientId("share"),
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok || !data.share) {
+        throw new Error(data && data.error ? data.error : "share_create_failed");
+      }
+      updateCollaborationIndexFromState(data, {
+        shareUrl: data.shareUrl,
+        sourcePath: window.location.pathname,
+      });
+      navigateTo("/collaboration/" + encodeURIComponent(data.share.shareId));
+    } catch (error) {
+      setRouteNotice("暂时无法生成分享页，请稍后重试。", "warning");
+    }
+  }
+
+  function renderCollaborationPage() {
+    const records = listCollaborationIndex();
+    els.routeBreadcrumbCurrent.textContent = "协同反馈";
+    els.routeKicker.textContent = "COLLABORATION";
+    els.routeTitle.textContent = "协同反馈";
+    els.routeSubtitle.textContent = "查看家人朋友是否已查看方案、是否有反馈，以及是否影响执行。";
+    els.routeActions.innerHTML = "";
+    els.routeContent.innerHTML = "";
+    setRouteNotice("", "");
+    if (!records.length) {
+      els.routeContent.className = "route-content empty-state collaboration-empty-state";
+      const title = document.createElement("h2");
+      title.textContent = "还没有发出的方案";
+      const text = document.createElement("p");
+      text.textContent = "从行程详情或已保存版本点击“发给家人朋友”，这里会显示查看和反馈进展。";
+      const back = document.createElement("button");
+      back.type = "button";
+      back.className = "primary-btn";
+      back.textContent = "回到工作台";
+      back.addEventListener("click", function () {
+        navigateTo("/");
+      });
+      els.routeContent.append(title, text, back);
+      return;
+    }
+    els.routeContent.className = "route-content collaboration-list";
+    records.forEach(function (record) {
+      const card = document.createElement("article");
+      card.className = "collaboration-record-card";
+      const status = document.createElement("div");
+      status.className = "collaboration-record-status";
+      status.append(
+        makeTag(collaborationStatusLabel(record), collaborationTone(record)),
+        document.createElement("span")
+      );
+      status.lastChild.textContent = record.feedbackCount ? record.feedbackCount + " 条反馈" : "等待反馈";
+      const content = document.createElement("div");
+      content.className = "collaboration-record-main";
+      const title = document.createElement("h2");
+      title.textContent = record.planName || "未命名方案";
+      const meta = document.createElement("p");
+      meta.textContent = [
+        "版本 " + (record.planVersion || 1),
+        record.createdAt ? new Date(record.createdAt).toLocaleString("zh-CN") : "",
+      ].filter(Boolean).join(" · ");
+      const tags = document.createElement("div");
+      tags.className = "chip-row";
+      tags.append(
+        makeTag((record.reviewerCount || 0) + " 人已查看", "blue"),
+        makeTag(record.needsOwnerReview ? "执行前需确认" : "当前可继续", record.needsOwnerReview ? "red" : "green")
+      );
+      content.append(title, meta, tags);
+      const open = document.createElement("button");
+      open.type = "button";
+      open.className = "secondary-btn";
+      open.textContent = "查看协同详情";
+      open.addEventListener("click", function () {
+        navigateTo("/collaboration/" + encodeURIComponent(record.shareId));
+      });
+      card.append(status, content, open);
+      els.routeContent.appendChild(card);
+    });
+  }
+
+  function renderCollaborationDetailPage(shareId) {
+    const record = getCollaborationIndexRecord(shareId);
+    els.routeBreadcrumbCurrent.textContent = "协同详情";
+    els.routeKicker.textContent = "COLLABORATION DETAIL";
+    els.routeTitle.textContent = record && record.planName ? record.planName : "协同详情";
+    els.routeSubtitle.textContent = "查看家人朋友的查看状态和反馈，确认后再继续执行当前版本。";
+    els.routeActions.innerHTML = "";
+    els.routeContent.className = "route-content";
+    els.routeContent.innerHTML = "";
+    setRouteNotice("正在读取协同进展...", "");
+    fetchOwnerShare(shareId);
+  }
+
+  async function fetchOwnerShare(shareId) {
+    try {
+      const response = await fetch("/api/shares/" + encodeURIComponent(shareId) + "/owner");
+      const data = await response.json();
+      if (!response.ok || !data.ok || !data.share) {
+        throw new Error(data && data.error ? data.error : "share_unavailable");
+      }
+      if (state.route.name !== "collaboration-detail" || state.route.shareId !== shareId) return;
+      state.activeShare = data;
+      updateCollaborationIndexFromState(data, getCollaborationIndexRecord(shareId) || {});
+      renderOwnerShareContent(data);
+    } catch (error) {
+      if (state.route.name !== "collaboration-detail" || state.route.shareId !== shareId) return;
+      setRouteNotice("暂时无法读取协同进展，已保留本地入口。", "warning");
+      els.routeContent.className = "route-content empty-state";
+      els.routeContent.textContent = "协同详情暂时不可用，请稍后重试。";
+    }
+  }
+
+  function renderOwnerShareContent(data) {
+    const record = getCollaborationIndexRecord(data.share.shareId) || {};
+    els.routeTitle.textContent = data.share.planName || record.planName || "协同详情";
+    els.routeActions.innerHTML = "";
+    const back = document.createElement("button");
+    back.type = "button";
+    back.className = "ghost-btn";
+    back.textContent = "协同反馈";
+    back.addEventListener("click", function () { navigateTo("/collaboration"); });
+    const openShare = document.createElement("button");
+    openShare.type = "button";
+    openShare.className = "secondary-btn";
+    openShare.textContent = "打开给对方看的页面";
+    openShare.disabled = !record.shareUrl;
+    openShare.addEventListener("click", function () {
+      if (record.shareUrl) navigateTo(record.shareUrl);
+    });
+    const confirm = document.createElement("button");
+    confirm.type = "button";
+    confirm.className = "primary-btn";
+    confirm.textContent = "继续使用当前版本";
+    confirm.disabled = !data.needsOwnerReview;
+    confirm.addEventListener("click", function () {
+      reviewOwnerShare(data.share.shareId);
+    });
+    els.routeActions.append(back, openShare, confirm);
+    setRouteNotice(
+      data.needsOwnerReview
+        ? "有反馈需要你确认。确认后，当前方案才会继续进入执行。"
+        : "当前协同反馈已确认，不会阻止执行当前版本。",
+      data.needsOwnerReview ? "warning" : "success"
+    );
+
+    els.routeContent.className = "route-content";
+    els.routeContent.innerHTML = "";
+    els.routeContent.appendChild(createCollaborationSummaryPanel(data));
+    els.routeContent.appendChild(createFeedbackListPanel(data));
+    els.routeContent.appendChild(createSharedPlanPanel(data.share.snapshot));
+  }
+
+  function createCollaborationSummaryPanel(data) {
+    const panel = document.createElement("section");
+    panel.className = "collaboration-summary-panel";
+    const content = document.createElement("div");
+    const title = document.createElement("h2");
+    title.textContent = "协同进展";
+    const text = document.createElement("p");
+    text.textContent = data.reviewers.length
+      ? data.reviewers.map(function (item) {
+        return item.displayName + (item.lastFeedbackAt ? " 已反馈" : " 已查看");
+      }).join("，")
+      : "分享页还没有被查看。";
+    const tags = document.createElement("div");
+    tags.className = "chip-row";
+    tags.append(
+      makeTag(data.reviewers.length + " 人已查看", "blue"),
+      makeTag(data.feedback.length + " 条反馈", data.feedback.length ? "amber" : ""),
+      makeTag(data.needsOwnerReview ? "需确认" : "已确认", data.needsOwnerReview ? "red" : "green")
+    );
+    content.append(title, text, tags);
+    panel.appendChild(content);
+    return panel;
+  }
+
+  function createFeedbackListPanel(data) {
+    const panel = document.createElement("section");
+    panel.className = "feedback-return-panel";
+    const heading = document.createElement("div");
+    heading.className = "section-heading-actions";
+    const title = document.createElement("h2");
+    title.textContent = "收到的反馈";
+    const disabled = document.createElement("button");
+    disabled.type = "button";
+    disabled.className = "secondary-btn";
+    disabled.textContent = "根据反馈生成新方案";
+    disabled.disabled = true;
+    heading.append(title, disabled);
+    panel.appendChild(heading);
+    if (!data.feedback.length) {
+      const empty = document.createElement("p");
+      empty.className = "muted-copy";
+      empty.textContent = "还没有反馈。对方打开页面后，可以点赞、表达担心或留言。";
+      panel.appendChild(empty);
+      return panel;
+    }
+    data.feedback.forEach(function (item) {
+      const row = document.createElement("article");
+      row.className = "feedback-return-row";
+      const reviewer = data.reviewers.find(function (candidate) {
+        return candidate.reviewerId === item.reviewerId;
+      });
+      const title = document.createElement("h3");
+      title.textContent = (reviewer ? reviewer.displayName : "家人朋友") + " · " + feedbackReactionLabel(item.reaction);
+      const text = document.createElement("p");
+      text.textContent = item.comment || "没有额外留言。";
+      row.append(title, text, makeTag(feedbackTargetLabel(item.targetType), item.reaction === "concern" || item.reaction === "dislike" ? "red" : "green"));
+      panel.appendChild(row);
+    });
+    return panel;
+  }
+
+  function createSharedPlanPanel(snapshot) {
+    const panel = document.createElement("section");
+    panel.className = "shared-plan-panel";
+    const title = document.createElement("h2");
+    title.textContent = snapshot && snapshot.selectedPlan && snapshot.selectedPlan.name || snapshot && snapshot.planName || "共享方案";
+    const text = document.createElement("p");
+    const selected = snapshot && snapshot.selectedPlan || {};
+    text.textContent = [
+      selected.durationText,
+      selected.budgetText,
+      selected.score ? selected.score + " 分" : "",
+    ].filter(Boolean).join(" · ") || "对方会看到当前版本的只读方案。";
+    const tags = document.createElement("div");
+    tags.className = "chip-row";
+    (selected.cards || []).slice(0, 4).forEach(function (card) {
+      tags.appendChild(makeTag(card.title || card.type || "安排项", "blue"));
+    });
+    panel.append(title, text, tags);
+    return panel;
+  }
+
+  async function reviewOwnerShare(shareId) {
+    setRouteNotice("正在确认当前版本...", "");
+    try {
+      const response = await fetch("/api/shares/" + encodeURIComponent(shareId) + "/owner-review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision: "continue_current_version" }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok || !data.share) {
+        throw new Error(data && data.error ? data.error : "owner_review_failed");
+      }
+      updateCollaborationIndexFromState(data, getCollaborationIndexRecord(shareId) || {});
+      renderOwnerShareContent(data);
+    } catch (error) {
+      setRouteNotice("确认失败，请稍后重试。", "warning");
+    }
+  }
+
+  function renderSharePage(shareId) {
+    els.routeBreadcrumbCurrent.textContent = "共享方案";
+    els.routeKicker.textContent = "SHARED PLAN";
+    els.routeTitle.textContent = "给你看的周末方案";
+    els.routeSubtitle.textContent = "你可以查看安排，并把想法发回给发起人。";
+    els.routeActions.innerHTML = "";
+    els.routeContent.className = "route-content";
+    els.routeContent.innerHTML = "";
+    setRouteNotice("正在打开共享方案...", "");
+    fetchPublicShare(shareId);
+  }
+
+  async function fetchPublicShare(shareId) {
+    const params = new URLSearchParams(window.location.search);
+    const access = params.get("token") || "";
+    if (!access) {
+      setRouteNotice("访问凭证缺失，无法打开共享方案。", "warning");
+      els.routeContent.className = "route-content empty-state";
+      els.routeContent.textContent = "请让发起人重新发送本地分享页。";
+      return;
+    }
+    try {
+      const response = await fetch("/api/shares/" + encodeURIComponent(shareId) + "?token=" + encodeURIComponent(access));
+      const data = await response.json();
+      if (!response.ok || !data.ok || !data.share) {
+        throw new Error(data && data.error ? data.error : "share_unavailable");
+      }
+      if (state.route.name !== "share-detail" || state.route.shareId !== shareId) return;
+      state.activeShare = data;
+      updateCollaborationIndexFromState(data, getCollaborationIndexRecord(shareId) || {});
+      renderPublicShareContent(data, access);
+    } catch (error) {
+      if (state.route.name !== "share-detail" || state.route.shareId !== shareId) return;
+      setRouteNotice("共享方案暂时无法打开，请让发起人重新发送。", "warning");
+      els.routeContent.className = "route-content empty-state";
+      els.routeContent.textContent = "当前链接不可用。";
+    }
+  }
+
+  function renderPublicShareContent(data, access) {
+    els.routeTitle.textContent = data.share.planName || "给你看的周末方案";
+    els.routeActions.innerHTML = "";
+    setRouteNotice(
+      data.readOnly
+        ? "这个页面已经进入只读状态，可以查看方案，但不能继续提交反馈。"
+        : "你可以点赞、表达担心或留言，发起人会在协同反馈里看到。",
+      data.readOnly ? "warning" : "success"
+    );
+    els.routeContent.className = "route-content";
+    els.routeContent.innerHTML = "";
+    els.routeContent.appendChild(createSharedPlanPanel(data.share.snapshot));
+    els.routeContent.appendChild(createPublicFeedbackPanel(data, access));
+  }
+
+  function createPublicFeedbackPanel(data, access) {
+    const panel = document.createElement("section");
+    panel.className = "public-feedback-panel";
+    const title = document.createElement("h2");
+    title.textContent = "把你的想法告诉发起人";
+    const nameLabel = document.createElement("label");
+    nameLabel.className = "field-label";
+    nameLabel.textContent = "你的称呼";
+    const nameInput = document.createElement("input");
+    nameInput.className = "text-field";
+    nameInput.type = "text";
+    nameInput.value = "家人朋友";
+    nameInput.disabled = data.readOnly;
+    const feedbackLabel = document.createElement("label");
+    feedbackLabel.className = "field-label";
+    feedbackLabel.textContent = "留言";
+    const comment = document.createElement("textarea");
+    comment.rows = 4;
+    comment.placeholder = "例如：想吃清淡一点，或者这家餐厅可以。";
+    comment.disabled = data.readOnly;
+    const actions = document.createElement("div");
+    actions.className = "public-feedback-actions";
+    [
+      ["like", "喜欢这个安排"],
+      ["concern", "有点担心"],
+      ["restaurant_ok", "餐厅可以"],
+      ["comment", "只留言"],
+    ].forEach(function (item) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = item[0] === "concern" ? "secondary-btn" : "primary-btn";
+      button.textContent = item[1];
+      button.disabled = data.readOnly;
+      button.addEventListener("click", function () {
+        submitPublicFeedback(data.share.shareId, access, {
+          displayName: nameInput.value || "家人朋友",
+          role: "family",
+          targetType: "whole_plan",
+          reaction: item[0],
+          comment: comment.value || null,
+        });
+      });
+      actions.appendChild(button);
+    });
+    panel.append(title, nameLabel, nameInput, feedbackLabel, comment, actions);
+    return panel;
+  }
+
+  async function submitPublicFeedback(shareId, access, payload) {
+    setRouteNotice("正在发送反馈...", "");
+    try {
+      const response = await fetch("/api/shares/" + encodeURIComponent(shareId) + "/feedback?token=" + encodeURIComponent(access), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok || !data.share) {
+        throw new Error(data && data.error ? data.error : "feedback_failed");
+      }
+      updateCollaborationIndexFromState(data, getCollaborationIndexRecord(shareId) || {});
+      renderPublicShareContent(data, access);
+      setRouteNotice("反馈已发给发起人。", "success");
+    } catch (error) {
+      setRouteNotice("反馈没有发送成功，请稍后重试。", "warning");
+    }
+  }
+
+  function feedbackReactionLabel(reaction) {
+    const labels = {
+      like: "喜欢",
+      concern: "有点担心",
+      restaurant_ok: "餐厅可以",
+      comment: "留言",
+      dislike: "不太合适",
+    };
+    return labels[reaction] || "反馈";
+  }
+
+  function feedbackTargetLabel(targetType) {
+    const labels = {
+      whole_plan: "整份方案",
+      activity: "活动",
+      restaurant: "餐厅",
+      transport: "交通",
+      timeline: "时间安排",
+      budget: "预算",
+    };
+    return labels[targetType] || "方案";
+  }
+
   function loadSavedDetailWorkspace(snapshot) {
     const stored = savedPlans.loadSnapshotWorkspace(window.localStorage, snapshot.snapshotId);
     if (stored) return stored;
@@ -481,7 +1443,21 @@
     saveButton.className = "primary-btn";
     saveButton.textContent = isSaved && !workspace.dirty ? "保存为新版本" : "保存方案";
     saveButton.addEventListener("click", saveCurrentDetail);
-    els.routeActions.append(listButton, saveButton);
+    const executeButton = document.createElement("button");
+    executeButton.type = "button";
+    executeButton.className = "secondary-btn";
+    executeButton.textContent = "开始执行";
+    executeButton.addEventListener("click", function () {
+      startExecutionFromWorkspace(workspace, plan, selected);
+    });
+    const shareButton = document.createElement("button");
+    shareButton.type = "button";
+    shareButton.className = "secondary-btn";
+    shareButton.textContent = "发给家人朋友";
+    shareButton.addEventListener("click", function () {
+      createShareFromWorkspace(workspace, plan, selected);
+    });
+    els.routeActions.append(listButton, shareButton, executeButton, saveButton);
 
     if (workspace.dirty) {
       setRouteNotice("版本 " + workspace.context.version + " 有未保存调整。已保留调整前的稳定版本，可撤销本次调整。", "warning");
@@ -575,7 +1551,10 @@
     button.addEventListener("click", function () {
       previewDetailCandidate(type, segmentIndex, label);
     });
-    card.append(title, text, button);
+    const control = document.createElement("div");
+    control.className = "adjustment-control-content";
+    control.append(title, text, button);
+    card.appendChild(control);
     return card;
   }
 
@@ -610,7 +1589,12 @@
     const pending = state.detailCandidate;
     if (!pending) return;
     const old = els.routeContent.querySelector(".inline-choice-panel");
-    if (old) old.remove();
+    if (old) {
+      const oldCard = old.closest(".inline-replan-control");
+      const oldControl = oldCard && oldCard.querySelector(".adjustment-control-content");
+      if (oldControl) oldControl.classList.remove("hidden");
+      old.remove();
+    }
     const target = Array.from(els.routeContent.querySelectorAll(".inline-replan-control")).find(function (card) {
       return card.dataset.adjustmentType === pending.type &&
         Number(card.dataset.segmentIndex || 0) === Number(pending.segmentIndex || 0);
@@ -619,6 +1603,8 @@
       setRouteNotice("当前安排已更新，请重新选择要调整的项目。", "warning");
       return;
     }
+    const targetControl = target.querySelector(".adjustment-control-content");
+    if (targetControl) targetControl.classList.add("hidden");
     const panel = document.createElement("section");
     panel.className = "inline-choice-panel";
     const content = document.createElement("div");
@@ -642,6 +1628,7 @@
     cancel.textContent = "取消查看";
     cancel.addEventListener("click", function () {
       state.detailCandidate = null;
+      if (targetControl) targetControl.classList.remove("hidden");
       panel.remove();
     });
     const adopt = document.createElement("button");
@@ -1395,15 +2382,32 @@
     renderFinalSummary();
   }
 
-  function executeSelectedPlan() {
+  async function executeSelectedPlan() {
     const plan = getSelectedPlan();
     if (!plan) return;
     const queue = core.createExecutionQueue(plan, state.result.parsed);
-    state.executedActions = core.executeActionQueue(queue);
-    renderStages();
-    renderServicePackage();
-    renderQueue();
-    renderFinalSummary();
+    try {
+      const execution = await createExecutionRecord({
+        sessionId: state.v5Context && state.v5Context.sessionId,
+        planId: plan.id,
+        planVersion: state.v5Context && state.v5Context.version || 1,
+        planName: plan.name,
+        steps: buildExecutionStepsFromActions(queue),
+      });
+      state.executedActions = core.executeActionQueue(queue);
+      renderStages();
+      renderServicePackage();
+      renderQueue();
+      renderFinalSummary();
+      navigateTo("/executions/" + encodeURIComponent(execution.executionId));
+    } catch (error) {
+      state.executedActions = core.executeActionQueue(queue);
+      renderStages();
+      renderServicePackage();
+      renderQueue();
+      renderFinalSummary();
+      if (els.queueStatus) els.queueStatus.textContent = "本地演示执行完成，执行记录暂未写入";
+    }
   }
 
   function resetDemo() {
