@@ -203,6 +203,22 @@ multi-instance execution, and external action compensation.
 
 ---
 
+## Phase 13: Execution Outbox and In-process Worker P1-D
+
+**Purpose**: Add a durable local outbox and manual in-process worker drain for
+Execution without introducing distributed scheduling or real external actions.
+
+- [x] T073 [P1-D] Add `execution_outbox` persistence, idempotent current-step enqueue, and outbox status tracking
+- [x] T074 [P1-D] Add manual `ExecutionWorker.drain_outbox()` that advances only the matching current active mock step
+- [x] T075 [P1-D] Expose `/api/executions/outbox/drain` through ExecutionAdapter without binding Runtime to worker internals
+- [x] T076 [P1-D] Add migration, route, worker-drain, stale-outbox, and mock-boundary tests
+
+Deferred beyond P1-D: automatic background thread startup, distributed queue
+claiming, multi-instance scheduling, real external action execution, and
+external side-effect compensation.
+
+---
+
 ## Dependencies & Execution Order
 
 - Phase 1 must finish before all other phases.

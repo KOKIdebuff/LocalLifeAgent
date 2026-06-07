@@ -73,6 +73,9 @@ Current implementation status:
 - P1-C Runtime summary Event integration is implemented through stable
   Execution -> Runtime summary Events. Execution still owns Task/Step state;
   Runtime records only summary Events and `activeExecutionId`.
+- P1-D in-process Execution outbox and manual worker drain are implemented.
+  The worker advances only mock Execution steps through ExecutionAdapter/Core,
+  records durable outbox status, and does not call external services.
 - Delivery grouping is tracked in `RUNTIME_EXECUTION_DELIVERY_AUDIT.md` so
   Runtime/Execution changes can be reviewed separately from UI and saved-plan
   worktree changes.
@@ -792,6 +795,23 @@ Unsupported in P0:
 
 P1+ may add richer plan or execution rollback through separate Plan/Execution
 domains. Runtime should expose stable references and summary Events only.
+
+### 12.6 Outbox Boundary
+
+Execution outbox is an Execution P1-D infrastructure primitive, not Runtime
+state. Runtime records only the resulting Execution summary Events.
+
+The first implementation is intentionally local and manual:
+
+- `execution_outbox` stores pending mock step work.
+- Execution create and step advance enqueue the current active step.
+- `ExecutionWorker.drain_outbox()` claims pending work and advances only the
+  same current step it claimed.
+- stale, terminal, blocked, or cancelled items are skipped instead of replaying
+  or compensating work.
+- no background thread starts automatically.
+- no external booking, payment, messaging, scheduler, or distributed outbox is
+  implemented.
 
 ## 13. Error Handling
 

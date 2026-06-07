@@ -52,9 +52,11 @@ as their own delivery group:
 - `runtime.schema.json` marks Runtime P0 as implemented and keeps rollback as
   degraded.
 - `runtime-implementation-design.md` records P1-A, P1-B, and P1-C as
-  implemented while keeping background workers, outbox, distributed scheduling,
-  external compensation, and full task replay out of scope.
-- `tasks.md` marks T049-T072 complete.
+  implemented.
+- P1-D in-process Execution outbox and manual worker drain are implemented
+  while keeping automatic background threads, distributed scheduling, external
+  compensation, and full task replay out of scope.
+- `tasks.md` marks T049-T076 complete.
 
 ## Safety Findings
 
@@ -62,6 +64,8 @@ as their own delivery group:
   not mutate Execution Step state.
 - Execution owns Step state, attempts, retry, blocking, cancellation, and
   completion.
+- Execution outbox stores pending mock step work and skips stale work instead
+  of replaying it against a different current step.
 - Runtime summary payloads are allowlisted and size-limited.
 - Legacy `POST /api/runtime` remains protected by golden fixtures.
 

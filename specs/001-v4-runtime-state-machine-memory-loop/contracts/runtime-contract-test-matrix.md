@@ -81,6 +81,10 @@ frontend-independent consumption without changing current planning behavior.
 | Plan-version gate | Execution write input | stale plan version produces `execution_plan_version_conflict` |
 | Summary payload boundary | Runtime payload allowlist | Runtime summary Events reject UI fields and oversized payloads without partial writes |
 | Legacy protection | legacy golden fixtures | feature flag off keeps legacy `POST /api/runtime` golden behavior stable |
+| Durable outbox | Execution repositories | `execution_outbox` persists pending mock step work independently of Runtime tables |
+| Manual worker drain | ExecutionWorker | worker drain claims pending outbox items and advances only the matching current active step |
+| Stale outbox protection | ExecutionWorker | outbox items for a step that is no longer current are skipped, not replayed against another step |
+| No external execution | Execution boundary | outbox worker keeps mock-only semantics and does not call booking, payment, messaging, or scheduler services |
 
 ## V5 Runtime Projection
 
