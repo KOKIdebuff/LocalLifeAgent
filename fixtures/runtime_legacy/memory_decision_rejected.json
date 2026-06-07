@@ -1,0 +1,24 @@
+{
+  "ok": false,
+  "status": "memory_decision_rejected",
+  "currentState": "memory_candidate_review",
+  "allowedNextStates": ["memory_candidate_review", "done"],
+  "session": {
+    "sessionId": "<session-id>",
+    "currentState": "memory_candidate_review",
+    "events": [
+      {
+        "type": "memory_decision_rejected",
+        "fromState": "memory_candidate_review",
+        "toState": "memory_candidate_review"
+      }
+    ]
+  },
+  "error": "sensitive_correction_blocked",
+  "resolution": "retry_correction",
+  "memoryDecisionResult": {
+    "ok": false,
+    "error": "sensitive_correction_blocked",
+    "candidateStatus": "pending"
+  }
+}

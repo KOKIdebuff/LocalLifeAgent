@@ -361,35 +361,35 @@ class ContractSchemaTests(unittest.TestCase):
         )
         self.assertEqual(
             effective_capabilities["session_lifecycle"]["availability"],
-            "unavailable",
+            "available",
         )
         self.assertEqual(
             effective_capabilities["state_machine"]["availability"],
-            "degraded",
+            "available",
         )
         self.assertEqual(
             effective_capabilities["event_stream"]["availability"],
-            "degraded",
+            "available",
         )
         self.assertEqual(
             effective_capabilities["persistence"]["availability"],
-            "unavailable",
+            "available",
         )
         self.assertEqual(
             effective_capabilities["recovery_point"]["availability"],
-            "unavailable",
+            "available",
         )
         self.assertEqual(
             effective_capabilities["rollback_primitive"]["availability"],
-            "unavailable",
+            "degraded",
         )
         self.assertEqual(
             effective_capabilities["runtime_adapter"]["availability"],
-            "unavailable",
+            "available",
         )
         self.assertEqual(
             effective_capabilities["capability_query"]["availability"],
-            "unavailable",
+            "available",
         )
         self.assertEqual(
             effective_capabilities["contract_tests"]["availability"],
@@ -635,7 +635,8 @@ class ContractSchemaTests(unittest.TestCase):
     def test_runtime_schema_marks_thin_runtime_and_hybrid_frontend_dependency(self):
         schema = load_json("runtime.schema.json")
 
-        self.assertEqual(schema["x-apiStatus"], "thin_runtime_implemented")
+        self.assertEqual(schema["x-apiStatus"], "thin_runtime_and_product_runtime_p0_implemented")
+        self.assertEqual(schema["x-productGradeP0Status"], "implemented")
         self.assertEqual(schema["x-frontendMigration"]["target"], "hybrid_dependency")
         self.assertEqual(schema["x-frontendMigration"]["planningEngine"], "agent-core.js")
         self.assertEqual(schema["x-frontendMigration"]["runtimeRole"], "state_and_backend_enhancement")

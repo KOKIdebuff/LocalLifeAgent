@@ -1,0 +1,22 @@
+{
+  "ok": true,
+  "status": "memory_committed",
+  "currentState": "memory_committed",
+  "allowedNextStates": ["done"],
+  "session": {
+    "sessionId": "<session-id>",
+    "currentState": "memory_committed",
+    "allowedNextStates": ["done"],
+    "events": [
+      {
+        "type": "memory_committed",
+        "fromState": "memory_candidate_review",
+        "toState": "memory_committed"
+      }
+    ]
+  },
+  "memoryDecisionResult": {
+    "ok": true,
+    "status": "adopted"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "ok": true,
+  "status": "planning_ready",
+  "currentState": "planning_local",
+  "allowedNextStates": ["researching_tools"],
+  "session": {
+    "sessionId": "<session-id>",
+    "currentState": "planning_local",
+    "allowedNextStates": ["researching_tools"],
+    "events": [
+      {
+        "type": "intent_loaded",
+        "fromState": "intent_loading",
+        "toState": "planning_local"
+      }
+    ],
+    "memoryPriorityRule": "current_request_overrides_memory"
+  },
+  "intentResult": {
+    "ok": true,
+    "source": "llm",
+    "runtimePath": "direct_llm"
+  }
+}

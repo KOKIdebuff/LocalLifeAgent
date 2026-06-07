@@ -1,0 +1,29 @@
+{
+  "ok": true,
+  "status": "feedback_captured",
+  "currentState": "feedback_capture",
+  "allowedNextStates": ["memory_candidate_review"],
+  "session": {
+    "sessionId": "<session-id>",
+    "currentState": "feedback_capture",
+    "allowedNextStates": ["memory_candidate_review"],
+    "events": [
+      {
+        "type": "feedback_captured",
+        "fromState": "ready_for_confirmation",
+        "toState": "feedback_capture"
+      },
+      {
+        "type": "memory_candidate_created",
+        "fromState": "feedback_capture",
+        "toState": "memory_candidate_review"
+      }
+    ]
+  },
+  "feedbackResult": {
+    "ok": true,
+    "candidate": {
+      "status": "pending"
+    }
+  }
+}

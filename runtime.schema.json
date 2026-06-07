@@ -2460,8 +2460,8 @@
     ],
     "done": []
   },
-  "x-apiStatus": "thin_runtime_implemented",
-  "x-productGradeP0Status": "contract_frozen_not_implemented",
+  "x-apiStatus": "thin_runtime_and_product_runtime_p0_implemented",
+  "x-productGradeP0Status": "implemented",
   "x-frontendMigration": {
     "target": "hybrid_dependency",
     "planningEngine": "agent-core.js",
@@ -2612,70 +2612,63 @@
     "effectiveCapabilities": [
       {
         "name": "session_lifecycle",
-        "availability": "unavailable",
-        "version": "v4-alpha",
-        "limits": {},
-        "reason": "No persisted session lifecycle operations are implemented."
+        "availability": "available",
+        "version": "v4-p0",
+        "limits": {}
       },
       {
         "name": "state_machine",
-        "availability": "degraded",
-        "version": "v4-alpha",
-        "limits": {},
-        "reason": "The thin endpoint emits state-shaped responses but has no persisted Transition Engine."
+        "availability": "available",
+        "version": "v4-p0",
+        "limits": {}
       },
       {
         "name": "event_stream",
-        "availability": "degraded",
-        "version": "v4-alpha",
-        "limits": {},
-        "reason": "Events exist only in the current response and cannot be queried as a persisted stream."
+        "availability": "available",
+        "version": "v4-p0",
+        "limits": {}
       },
       {
         "name": "persistence",
-        "availability": "unavailable",
-        "version": "v4-alpha",
-        "limits": {},
-        "reason": "Runtime session, Event, and Recovery Point repositories are not implemented."
+        "availability": "available",
+        "version": "v4-p0",
+        "limits": {}
       },
       {
         "name": "recovery_point",
-        "availability": "unavailable",
-        "version": "v4-alpha",
+        "availability": "available",
+        "version": "v4-p0",
         "limits": {
           "latestRecoveryPointOnly": true
-        },
-        "reason": "Recovery Point storage and creation are not implemented."
+        }
       },
       {
         "name": "rollback_primitive",
-        "availability": "unavailable",
-        "version": "v4-alpha",
+        "availability": "degraded",
+        "version": "v4-p0",
         "limits": {
           "latestRecoveryPointOnly": true,
           "externalCompensation": false,
           "taskReplay": false
         },
-        "reason": "Rollback execution is not implemented."
+        "reason": "Latest-only recovery point storage is implemented; full restore, external compensation, and task replay remain out of scope."
       },
       {
         "name": "runtime_adapter",
-        "availability": "unavailable",
-        "version": "v4-alpha",
-        "limits": {},
-        "reason": "The product-grade RuntimeAdapter is a frozen contract only."
+        "availability": "available",
+        "version": "v4-p0",
+        "limits": {}
       },
       {
         "name": "capability_query",
-        "availability": "unavailable",
-        "version": "v4-alpha",
-        "limits": {},
-        "reason": "No runtime capability query endpoint or adapter method is implemented."
+        "availability": "available",
+        "version": "v4-p0",
+        "limits": {}
       },
       {
         "name": "contract_tests",
         "availability": "available",
-        "version": "v4-alpha",
+        "version": "v4-p0",
         "limits": {}
       },
       {

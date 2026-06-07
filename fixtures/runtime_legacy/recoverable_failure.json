@@ -1,0 +1,24 @@
+{
+  "ok": false,
+  "status": "recoverable_failure",
+  "currentState": "failed_recoverable",
+  "allowedNextStates": ["planning_local"],
+  "session": {
+    "sessionId": "<session-id>",
+    "currentState": "failed_recoverable",
+    "allowedNextStates": ["planning_local"],
+    "events": [
+      {
+        "type": "recoverable_failure",
+        "fromState": "intent_loading",
+        "toState": "failed_recoverable"
+      }
+    ],
+    "memoryPriorityRule": "current_request_overrides_memory"
+  },
+  "intentResult": {
+    "ok": false,
+    "source": "missing_api_key",
+    "intent": null
+  }
+}

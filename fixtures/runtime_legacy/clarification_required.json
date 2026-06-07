@@ -1,0 +1,22 @@
+{
+  "ok": true,
+  "status": "clarification_required",
+  "currentState": "clarifying",
+  "allowedNextStates": ["planning_local"],
+  "session": {
+    "sessionId": "<session-id>",
+    "currentState": "clarifying",
+    "allowedNextStates": ["planning_local"],
+    "events": [
+      {
+        "type": "clarification_required",
+        "fromState": "intent_loading",
+        "toState": "clarifying"
+      }
+    ],
+    "memoryPriorityRule": "current_request_overrides_memory"
+  },
+  "clarification": {
+    "key": "groupType"
+  }
+}

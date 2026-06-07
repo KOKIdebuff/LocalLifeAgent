@@ -1,0 +1,23 @@
+{
+  "ok": true,
+  "status": "memory_ignored",
+  "currentState": "done",
+  "allowedNextStates": [],
+  "session": {
+    "sessionId": "<session-id>",
+    "currentState": "done",
+    "allowedNextStates": [],
+    "events": [
+      {
+        "type": "memory_ignored",
+        "fromState": "memory_candidate_review",
+        "toState": "done"
+      }
+    ]
+  },
+  "memoryDecisionResult": {
+    "ok": true,
+    "status": "ignored",
+    "memory": null
+  }
+}

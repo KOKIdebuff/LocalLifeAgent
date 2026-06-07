@@ -1,0 +1,20 @@
+{
+  "ok": false,
+  "status": "operation_recoverable_failure",
+  "currentState": "feedback_capture",
+  "allowedNextStates": ["feedback_capture"],
+  "session": {
+    "sessionId": "<session-id>",
+    "currentState": "feedback_capture",
+    "events": [
+      {
+        "type": "operation_recoverable_failure",
+        "fromState": "feedback_capture",
+        "toState": "feedback_capture",
+        "reason": "storage_unavailable"
+      }
+    ]
+  },
+  "error": "storage_unavailable",
+  "operation": "feedback"
+}

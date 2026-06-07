@@ -23,6 +23,8 @@ from backend_core import (
     validate_intent,
 )
 from graph_runtime import graph_runtime_status, run_intent_graph
+from runtime import CompatibilityAdapter, RuntimeAdapter, get_runtime_capabilities
+from runtime.errors import RuntimeErrorBase
 
 
 app = FastAPI(title="Local Life Agent V4 API")
@@ -103,6 +105,36 @@ class RuntimeRequest(BaseModel):
     event: dict | None = None
     feedback: RuntimeFeedbackRequest | None = None
     memoryDecision: RuntimeMemoryDecisionRequest | None = None
+
+
+class RuntimeSessionCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    input: str = Field(min_length=1, max_length=1000)
+    overrides: dict = Field(default_factory=dict)
+    idempotencyKey: str = Field(min_length=1, max_length=160)
+
+
+class RuntimeSubmitEventRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    eventType: str = Field(min_length=1, max_length=120)
+    expectedVersion: int = Field(ge=1)
+    idempotencyKey: str = Field(min_length=1, max_length=160)
+    actor: str | None = Field(default=None, max_length=120)
+    traceId: str | None = Field(default=None, max_length=160)
+    reason: str | None = Field(default=None, max_length=500)
+    payload: dict = Field(default_factory=dict)
+
+
+class RuntimeLifecycleRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expectedVersion: int = Field(ge=1)
+    idempotencyKey: str = Field(min_length=1, max_length=160)
+    actor: str | None = Field(default=None, max_length=120)
+    traceId: str | None = Field(default=None, max_length=160)
+    reason: str | None = Field(default=None, max_length=500)
 
 
 RUNTIME_TRANSITIONS = {
@@ -190,6 +222,27 @@ def storage_intent_error():
     return intent_error_response("sqlite_unavailable", "storage_unavailable", [])
 
 
+def runtime_adapter():
+    current = get_settings()
+    return RuntimeAdapter(current["db_path"])
+
+
+def runtime_error_response(exc):
+    if isinstance(exc, RuntimeErrorBase):
+        return JSONResponse(status_code=exc.http_status, content=exc.to_payload())
+    if isinstance(exc, sqlite3.Error):
+        return JSONResponse(status_code=503, content=storage_error_payload())
+    raise exc
+
+
+def product_runtime_legacy_flag_enabled():
+    return os.environ.get("V4_PRODUCT_RUNTIME_LEGACY_CORE", "0") == "1"
+
+
+def runtime_shadow_compare_enabled():
+    return os.environ.get("V4_PRODUCT_RUNTIME_SHADOW_COMPARE", "0") == "1"
+
+
 async def resolve_intent_response(input_text, overrides, current):
     if not current["api_key"]:
         try:
@@ -261,8 +314,7 @@ async def extract_intent(request: IntentRequest):
     return await resolve_intent_response(request.input, request.overrides, current)
 
 
-@app.post("/api/runtime")
-async def runtime(request: RuntimeRequest):
+async def legacy_runtime_thin_response(request: RuntimeRequest):
     current = get_settings()
 
     if request.memoryDecision:
@@ -408,6 +460,125 @@ async def runtime(request: RuntimeRequest):
         events,
         intentResult=intent_result,
     )
+
+
+@app.post("/api/runtime")
+async def runtime(request: RuntimeRequest):
+    thin_response = await legacy_runtime_thin_response(request)
+    if product_runtime_legacy_flag_enabled():
+        thin_response = CompatibilityAdapter().project_legacy_response(thin_response=thin_response)
+    if runtime_shadow_compare_enabled():
+        CompatibilityAdapter().shadow_compare(
+            legacy_response=thin_response,
+            projected_response=CompatibilityAdapter().project_legacy_response(thin_response=thin_response),
+        )
+    return thin_response
+
+
+@app.get("/api/runtime/capabilities")
+def runtime_capabilities():
+    current = get_settings()
+    return get_runtime_capabilities(current["db_path"])
+
+
+@app.post("/api/runtime/sessions")
+def create_runtime_session(request: RuntimeSessionCreateRequest):
+    try:
+        result = runtime_adapter().create_session(
+            input_text=request.input,
+            overrides=request.overrides,
+            idempotency_key=request.idempotencyKey,
+        )
+        return result.public_dict()
+    except (RuntimeErrorBase, sqlite3.Error) as exc:
+        return runtime_error_response(exc)
+
+
+@app.get("/api/runtime/sessions/{session_id}")
+def get_runtime_session(session_id: str):
+    try:
+        return {"ok": True, "session": runtime_adapter().get_session(session_id).public_dict()}
+    except (RuntimeErrorBase, sqlite3.Error) as exc:
+        return runtime_error_response(exc)
+
+
+@app.post("/api/runtime/sessions/{session_id}/events")
+def submit_runtime_event(session_id: str, request: RuntimeSubmitEventRequest):
+    try:
+        result = runtime_adapter().submit_event(
+            session_id=session_id,
+            event_type=request.eventType,
+            expected_version=request.expectedVersion,
+            idempotency_key=request.idempotencyKey,
+            actor=request.actor,
+            trace_id=request.traceId,
+            payload=request.payload,
+            reason=request.reason,
+        )
+        return result.public_dict()
+    except (RuntimeErrorBase, sqlite3.Error) as exc:
+        return runtime_error_response(exc)
+
+
+@app.post("/api/runtime/sessions/{session_id}/pause")
+def pause_runtime_session(session_id: str, request: RuntimeLifecycleRequest):
+    try:
+        result = runtime_adapter().pause_session(
+            session_id=session_id,
+            expected_version=request.expectedVersion,
+            idempotency_key=request.idempotencyKey,
+            actor=request.actor,
+            trace_id=request.traceId,
+            reason=request.reason,
+        )
+        return result.public_dict()
+    except (RuntimeErrorBase, sqlite3.Error) as exc:
+        return runtime_error_response(exc)
+
+
+@app.post("/api/runtime/sessions/{session_id}/resume")
+def resume_runtime_session(session_id: str, request: RuntimeLifecycleRequest):
+    try:
+        result = runtime_adapter().resume_session(
+            session_id=session_id,
+            expected_version=request.expectedVersion,
+            idempotency_key=request.idempotencyKey,
+            actor=request.actor,
+            trace_id=request.traceId,
+            reason=request.reason,
+        )
+        return result.public_dict()
+    except (RuntimeErrorBase, sqlite3.Error) as exc:
+        return runtime_error_response(exc)
+
+
+@app.post("/api/runtime/sessions/{session_id}/close")
+def close_runtime_session(session_id: str, request: RuntimeLifecycleRequest):
+    try:
+        result = runtime_adapter().close_session(
+            session_id=session_id,
+            expected_version=request.expectedVersion,
+            idempotency_key=request.idempotencyKey,
+            actor=request.actor,
+            trace_id=request.traceId,
+            reason=request.reason,
+        )
+        return result.public_dict()
+    except (RuntimeErrorBase, sqlite3.Error) as exc:
+        return runtime_error_response(exc)
+
+
+@app.get("/api/runtime/sessions/{session_id}/events")
+def list_runtime_events(session_id: str, afterSequence: int = 0, limit: int = 100):
+    try:
+        events = runtime_adapter().list_events(session_id=session_id, after_sequence=afterSequence, limit=limit)
+        return {
+            "ok": True,
+            "sessionId": session_id,
+            "events": [event.public_dict() for event in events],
+        }
+    except (RuntimeErrorBase, sqlite3.Error) as exc:
+        return runtime_error_response(exc)
 
 
 @app.post("/api/feedback")
