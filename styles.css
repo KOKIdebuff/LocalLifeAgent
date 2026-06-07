@@ -1661,6 +1661,10 @@ textarea:focus-visible {
 .secondary-btn,
 .ghost-btn,
 .plan-select-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
   min-height: 40px;
   border-radius: 10px;
   padding: 0 16px;
@@ -1668,10 +1672,6 @@ textarea:focus-visible {
 }
 
 .primary-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
   border: 1px solid var(--primary);
   background: var(--primary);
   color: white;
@@ -2954,8 +2954,150 @@ textarea:focus-visible {
   margin: 0;
 }
 
+.saved-plan-grid,
+.execution-list,
+.collaboration-list {
+  display: grid;
+  gap: 14px;
+}
+
 .saved-plan-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.saved-plan-page,
+.execution-page,
+.collaboration-page {
+  gap: 16px;
+}
+
+.route-state-panel,
+.route-summary-panel {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.route-state-panel {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  min-height: 156px;
+  padding: 24px;
+}
+
+.route-state-panel.warning {
+  border-color: #e2c47d;
+  background: linear-gradient(135deg, #fffaf0, var(--surface));
+}
+
+.route-state-panel.loading {
+  border-color: #b9cff0;
+  background: linear-gradient(135deg, #f5f9ff, var(--surface));
+}
+
+.route-state-icon {
+  display: inline-flex;
+  width: 48px;
+  height: 48px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #d9e6f8;
+  border-radius: 12px;
+  background: #f3f8ff;
+  color: var(--primary);
+  font-size: 26px;
+}
+
+.route-state-panel.warning .route-state-icon {
+  border-color: #e7cb91;
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+
+.route-state-panel h2,
+.route-summary-panel h2 {
+  margin: 0;
+  font-size: 21px;
+}
+
+.route-state-panel p,
+.route-summary-panel p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.route-summary-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(360px, 0.9fr);
+  gap: 18px;
+  padding: 20px 22px;
+}
+
+.route-summary-copy {
+  min-width: 0;
+}
+
+.route-summary-copy .chip-row {
+  margin-top: 12px;
+}
+
+.route-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  align-content: stretch;
+}
+
+.route-metric {
+  display: grid;
+  min-height: 76px;
+  align-content: center;
+  gap: 5px;
+  border: 1px solid #e1e8f2;
+  border-radius: 10px;
+  padding: 12px;
+  background: #fbfdff;
+}
+
+.route-metric span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.route-metric strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+}
+
+.route-metric.blue {
+  border-color: #cfe0f7;
+  background: #f4f8ff;
+}
+
+.route-metric.green {
+  border-color: #c9e5da;
+  background: #f5fbf8;
+}
+
+.route-metric.amber {
+  border-color: #ead29d;
+  background: #fffaf0;
+}
+
+.route-metric.red {
+  border-color: #efc2c2;
+  background: #fff6f6;
 }
 
 .saved-plan-card,
@@ -3125,6 +3267,13 @@ textarea:focus-visible {
   min-width: 0;
 }
 
+.execution-summary-copy .route-metric-grid,
+.collaboration-summary-panel .route-metric-grid,
+.shared-plan-panel .route-metric-grid,
+.detail-lifecycle-panel .route-metric-grid {
+  margin-top: 12px;
+}
+
 .execution-progress-visual {
   display: grid;
   width: min(240px, 100%);
@@ -3145,6 +3294,15 @@ textarea:focus-visible {
   color: var(--muted);
   font-size: 12px;
   font-weight: 700;
+}
+
+.execution-progress-visual small {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .execution-progress-bar {
@@ -3229,6 +3387,14 @@ textarea:focus-visible {
   font-size: 15px;
 }
 
+.execution-step-meta {
+  display: inline-block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
 .execution-step.active {
   border-color: #bdd7ff;
   background: #f4f8ff;
@@ -3266,6 +3432,15 @@ textarea:focus-visible {
   justify-content: space-between;
   gap: 20px;
   padding: 18px 20px;
+}
+
+.detail-lifecycle-panel > div:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.detail-lifecycle-panel .route-metric-grid {
+  max-width: 620px;
 }
 
 .change-diff {
@@ -3458,6 +3633,19 @@ body.secondary-route .agent-rail .agent-panel[data-agent-panel="process"] .rail-
     flex-direction: column;
   }
 
+  .route-summary-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .route-state-panel {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .route-state-panel button {
+    grid-column: 1 / -1;
+    justify-self: flex-start;
+  }
+
   .saved-plan-grid {
     grid-template-columns: 1fr;
   }
@@ -3492,6 +3680,10 @@ body.secondary-route .agent-rail .agent-panel[data-agent-panel="process"] .rail-
   .section-heading-actions {
     align-items: flex-end;
     flex-direction: column-reverse;
+  }
+
+  .route-metric-grid {
+    grid-template-columns: 1fr;
   }
 
   .route-primary-actions,

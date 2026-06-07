@@ -308,6 +308,101 @@
     els.routeNotice.textContent = message;
   }
 
+  function formatDateTime(value) {
+    return value ? new Date(value).toLocaleString("zh-CN") : "";
+  }
+
+  function appendIcon(target, iconName) {
+    const icon = document.createElement("span");
+    icon.className = "material-symbols-rounded";
+    icon.setAttribute("aria-hidden", "true");
+    icon.textContent = iconName;
+    target.appendChild(icon);
+    return icon;
+  }
+
+  function setButtonContent(button, iconName, label) {
+    button.textContent = "";
+    if (iconName) appendIcon(button, iconName);
+    const text = document.createElement("span");
+    text.textContent = label;
+    button.appendChild(text);
+  }
+
+  function createRouteStatePanel(options) {
+    const opts = options || {};
+    const panel = document.createElement("section");
+    panel.className = "route-state-panel " + (opts.tone || "");
+    const icon = document.createElement("span");
+    icon.className = "route-state-icon material-symbols-rounded";
+    icon.setAttribute("aria-hidden", "true");
+    icon.textContent = opts.icon || "info";
+    const content = document.createElement("div");
+    const title = document.createElement("h2");
+    title.textContent = opts.title || "暂无内容";
+    const text = document.createElement("p");
+    text.textContent = opts.text || "";
+    content.append(title, text);
+    panel.append(icon, content);
+    if (opts.actionLabel && typeof opts.onAction === "function") {
+      const action = document.createElement("button");
+      action.type = "button";
+      action.className = opts.actionClass || "primary-btn";
+      setButtonContent(action, opts.actionIcon || "arrow_forward", opts.actionLabel);
+      action.addEventListener("click", opts.onAction);
+      panel.appendChild(action);
+    }
+    return panel;
+  }
+
+  function showRouteState(options) {
+    els.routeContent.className = "route-content";
+    els.routeContent.innerHTML = "";
+    els.routeContent.appendChild(createRouteStatePanel(options));
+  }
+
+  function createMetricCard(label, value, tone) {
+    const card = document.createElement("div");
+    card.className = "route-metric " + (tone || "");
+    const labelEl = document.createElement("span");
+    labelEl.textContent = label;
+    const valueEl = document.createElement("strong");
+    valueEl.textContent = value || "暂无";
+    card.append(labelEl, valueEl);
+    return card;
+  }
+
+  function createPageSummaryPanel(options) {
+    const opts = options || {};
+    const panel = document.createElement("section");
+    panel.className = "route-summary-panel " + (opts.tone || "");
+    const copy = document.createElement("div");
+    copy.className = "route-summary-copy";
+    const kicker = document.createElement("p");
+    kicker.className = "section-kicker";
+    kicker.textContent = opts.kicker || "STATUS";
+    const title = document.createElement("h2");
+    title.textContent = opts.title || "当前状态";
+    const text = document.createElement("p");
+    text.textContent = opts.text || "";
+    copy.append(kicker, title, text);
+    if (opts.tags && opts.tags.length) {
+      const tags = document.createElement("div");
+      tags.className = "chip-row";
+      opts.tags.forEach(function (tag) {
+        tags.appendChild(makeTag(tag.text, tag.tone));
+      });
+      copy.appendChild(tags);
+    }
+    const metrics = document.createElement("div");
+    metrics.className = "route-metric-grid";
+    (opts.metrics || []).forEach(function (metric) {
+      metrics.appendChild(createMetricCard(metric.label, metric.value, metric.tone));
+    });
+    panel.append(copy, metrics);
+    return panel;
+  }
+
   function safeReadJson(key, fallback) {
     try {
       const value = window.localStorage.getItem(key);
@@ -599,11 +694,33 @@
     els.routeContent.innerHTML = "";
     setRouteNotice("", "");
     if (!snapshots.length) {
-      els.routeContent.className = "route-content empty-state";
-      els.routeContent.textContent = "还没有已保存版本。先从工作台生成方案并进入详情保存。";
+      showRouteState({
+        icon: "bookmark_add",
+        title: "还没有已保存版本",
+        text: "先从工作台生成方案，进入详情页确认后保存。之后这里会保留可恢复的稳定版本。",
+        actionLabel: "回到工作台",
+        actionIcon: "home",
+        onAction: function () { navigateTo("/"); },
+      });
       return;
     }
-    els.routeContent.className = "route-content saved-plan-grid";
+    els.routeContent.className = "route-content saved-plan-page";
+    els.routeContent.appendChild(createPageSummaryPanel({
+      kicker: "LOCAL SNAPSHOTS",
+      title: snapshots.length + " 个已保存版本",
+      text: "这些记录保存在当前浏览器中。打开后可以恢复方案、继续调整、分享或开始模拟执行。",
+      tags: [
+        { text: "本地保存", tone: "green" },
+        { text: "可恢复详情", tone: "blue" },
+      ],
+      metrics: [
+        { label: "最新保存", value: formatDateTime(snapshots[0].savedAt) || "暂无", tone: "blue" },
+        { label: "总版本数", value: String(snapshots.length), tone: "green" },
+        { label: "保留方式", value: "浏览器本地" },
+      ],
+    }));
+    const grid = document.createElement("section");
+    grid.className = "saved-plan-grid";
     snapshots.forEach(function (snapshot) {
       const card = document.createElement("article");
       card.className = "saved-plan-card";
@@ -617,7 +734,7 @@
       summary.textContent = [
         snapshot.selectedPlan.durationText,
         snapshot.selectedPlan.budgetText,
-        new Date(snapshot.savedAt).toLocaleString("zh-CN"),
+        formatDateTime(snapshot.savedAt),
       ].filter(Boolean).join(" · ");
       const tags = document.createElement("div");
       tags.className = "chip-row";
@@ -630,13 +747,14 @@
       const open = document.createElement("button");
       open.type = "button";
       open.className = "secondary-btn";
-      open.textContent = "打开已保存版本";
+      setButtonContent(open, "open_in_new", "打开已保存版本");
       open.addEventListener("click", function () {
         navigateTo("/saved-plans/" + encodeURIComponent(snapshot.snapshotId));
       });
       card.append(heading, open);
-      els.routeContent.appendChild(card);
+      grid.appendChild(card);
     });
+    els.routeContent.appendChild(grid);
   }
 
   function renderExecutionsPage() {
@@ -649,22 +767,38 @@
     els.routeContent.innerHTML = "";
     setRouteNotice("", "");
     if (!records.length) {
-      els.routeContent.className = "route-content empty-state execution-empty-state";
-      const title = document.createElement("h2");
-      title.textContent = "还没有开始执行的方案";
-      const text = document.createElement("p");
-      text.textContent = "从工作台、行程详情或已保存版本里点击“开始执行”，这里会保留进度记录。";
-      const back = document.createElement("button");
-      back.type = "button";
-      back.className = "primary-btn";
-      back.textContent = "回到工作台";
-      back.addEventListener("click", function () {
-        navigateTo("/");
+      showRouteState({
+        icon: "task_alt",
+        title: "还没有开始执行的方案",
+        text: "从工作台、行程详情或已保存版本点击“开始执行”，这里会记录每个模拟事项的进度。",
+        actionLabel: "回到工作台",
+        actionIcon: "home",
+        onAction: function () {
+          navigateTo("/");
+        },
       });
-      els.routeContent.append(title, text, back);
       return;
     }
-    els.routeContent.className = "route-content execution-list";
+    const activeCount = records.filter(function (record) {
+      return !isExecutionTerminal(record.status);
+    }).length;
+    els.routeContent.className = "route-content execution-page";
+    els.routeContent.appendChild(createPageSummaryPanel({
+      kicker: "SIMULATED ACTIONS",
+      title: records.length + " 条执行记录",
+      text: "所有执行都是本地演示状态，不会真正订座、购票、支付或发送消息。",
+      tags: [
+        { text: "模拟执行", tone: "amber" },
+        { text: activeCount + " 条可继续", tone: activeCount ? "blue" : "green" },
+      ],
+      metrics: [
+        { label: "进行中", value: String(activeCount), tone: activeCount ? "blue" : "green" },
+        { label: "已结束", value: String(records.length - activeCount) },
+        { label: "最近更新", value: formatDateTime(records[0].updatedAt || records[0].createdAt) || "暂无" },
+      ],
+    }));
+    const list = document.createElement("section");
+    list.className = "execution-list";
     records.forEach(function (record) {
       const card = document.createElement("article");
       card.className = "execution-record-card";
@@ -684,25 +818,26 @@
       meta.className = "execution-meta";
       meta.textContent = [
         "版本 " + (record.planVersion || 1),
-        record.createdAt ? new Date(record.createdAt).toLocaleString("zh-CN") : "",
+        formatDateTime(record.createdAt),
       ].filter(Boolean).join(" · ");
       const tags = document.createElement("div");
       tags.className = "chip-row";
       tags.append(
-        makeTag(record.updatedAt ? "最近更新 " + new Date(record.updatedAt).toLocaleString("zh-CN") : "刚刚创建", "blue"),
+        makeTag(record.updatedAt ? "最近更新 " + formatDateTime(record.updatedAt) : "刚刚创建", "blue"),
         makeTag(isExecutionTerminal(record.status) ? "已结束" : "可继续", isExecutionTerminal(record.status) ? "green" : "amber")
       );
       content.append(title, meta, tags);
       const open = document.createElement("button");
       open.type = "button";
       open.className = "secondary-btn";
-      open.textContent = "查看执行详情";
+      setButtonContent(open, "arrow_forward", "查看执行详情");
       open.addEventListener("click", function () {
         navigateTo("/executions/" + encodeURIComponent(record.executionId));
       });
       card.append(status, content, open);
-      els.routeContent.appendChild(card);
+      list.appendChild(card);
     });
+    els.routeContent.appendChild(list);
   }
 
   function renderExecutionDetailPage(executionId) {
@@ -715,6 +850,12 @@
     els.routeContent.className = "route-content";
     els.routeContent.innerHTML = "";
     setRouteNotice("正在读取执行进度...", "");
+    els.routeContent.appendChild(createRouteStatePanel({
+      tone: "loading",
+      icon: "hourglass_top",
+      title: "正在读取执行进度",
+      text: "这里会显示当前步骤、已完成事项和可继续操作。",
+    }));
     fetchExecutionDetail(executionId);
   }
 
@@ -732,8 +873,15 @@
     } catch (error) {
       if (state.route.name !== "execution-detail" || state.route.executionId !== executionId) return;
       setRouteNotice("暂时无法读取执行进度，已保留本地执行记录。", "warning");
-      els.routeContent.className = "route-content empty-state";
-      els.routeContent.textContent = "执行详情暂时不可用，请稍后重试。";
+      showRouteState({
+        tone: "warning",
+        icon: "error",
+        title: "执行详情暂时不可用",
+        text: "可以稍后重试；本地执行记录仍然保留，不会丢失。",
+        actionLabel: "返回执行记录",
+        actionIcon: "arrow_back",
+        onAction: function () { navigateTo("/executions"); },
+      });
     }
   }
 
@@ -744,12 +892,12 @@
     const back = document.createElement("button");
     back.type = "button";
     back.className = "ghost-btn";
-    back.textContent = "执行记录";
+    setButtonContent(back, "arrow_back", "执行记录");
     back.addEventListener("click", function () { navigateTo("/executions"); });
     const next = document.createElement("button");
     next.type = "button";
     next.className = "primary-btn";
-    next.textContent = "继续下一步";
+    setButtonContent(next, "skip_next", "继续下一步");
     next.disabled = isExecutionTerminal(execution.status) || execution.status === "blocked";
     next.addEventListener("click", function () {
       advanceExecution(execution, "succeeded");
@@ -757,7 +905,7 @@
     const cancel = document.createElement("button");
     cancel.type = "button";
     cancel.className = "ghost-btn";
-    cancel.textContent = "取消执行";
+    setButtonContent(cancel, "cancel", "取消执行");
     cancel.disabled = isExecutionTerminal(execution.status);
     cancel.addEventListener("click", function () {
       cancelExecution(execution);
@@ -799,9 +947,16 @@
     tags.append(
       makeTag(executionStatusLabel(execution.status), executionTone(execution.status)),
       makeTag("版本 " + execution.planVersion, "blue"),
-      makeTag(record.createdAt ? new Date(record.createdAt).toLocaleString("zh-CN") : "刚刚开始")
+      makeTag(record.createdAt ? formatDateTime(record.createdAt) : "刚刚开始")
     );
-    content.append(title, text, tags);
+    const metrics = document.createElement("div");
+    metrics.className = "route-metric-grid";
+    metrics.append(
+      createMetricCard("当前状态", executionStatusLabel(execution.status), executionTone(execution.status)),
+      createMetricCard("总事项", String(steps.length), "blue"),
+      createMetricCard("已完成", String(done), "green")
+    );
+    content.append(title, text, tags, metrics);
 
     const visual = document.createElement("div");
     visual.className = "execution-progress-visual";
@@ -810,12 +965,14 @@
     percentText.textContent = percent + "%";
     const caption = document.createElement("span");
     caption.textContent = done + " / " + steps.length + " 已完成";
+    const stepLine = document.createElement("small");
+    stepLine.textContent = activeStep ? "当前：" + activeStep.title : "当前：" + executionStatusLabel(execution.status);
     const bar = document.createElement("div");
     bar.className = "execution-progress-bar";
     const fill = document.createElement("span");
     fill.style.width = percent + "%";
     bar.appendChild(fill);
-    visual.append(percentText, caption, bar);
+    visual.append(percentText, caption, stepLine, bar);
     panel.append(content, visual);
     return panel;
   }
@@ -840,6 +997,9 @@
       const title = document.createElement("h3");
       title.textContent = step.title;
       const text = document.createElement("p");
+      const meta = document.createElement("span");
+      meta.className = "execution-step-meta";
+      meta.textContent = step.stepId ? "步骤 " + step.stepId : "";
       const copy = {
         active: "这是当前要处理的事项。确认完成后，点击“继续下一步”。",
         pending: "等待前面的事项完成后再处理。",
@@ -849,7 +1009,7 @@
         blocked: "这个事项需要先处理异常，再继续后续安排。",
       };
       text.textContent = copy[step.status] || "等待处理。";
-      content.append(title, text);
+      content.append(title, text, meta);
       row.append(marker, content, makeTag(stepStatusLabel(step.status), step.status === "succeeded" ? "green" : step.status === "failed" || step.status === "blocked" ? "red" : "amber"));
       list.appendChild(row);
     });
@@ -1018,22 +1178,41 @@
     els.routeContent.innerHTML = "";
     setRouteNotice("", "");
     if (!records.length) {
-      els.routeContent.className = "route-content empty-state collaboration-empty-state";
-      const title = document.createElement("h2");
-      title.textContent = "还没有发出的方案";
-      const text = document.createElement("p");
-      text.textContent = "从行程详情或已保存版本点击“发给家人朋友”，这里会显示查看和反馈进展。";
-      const back = document.createElement("button");
-      back.type = "button";
-      back.className = "primary-btn";
-      back.textContent = "回到工作台";
-      back.addEventListener("click", function () {
-        navigateTo("/");
+      showRouteState({
+        icon: "group_add",
+        title: "还没有发出的方案",
+        text: "从行程详情或已保存版本点击“发给家人朋友”，这里会显示查看、反馈和执行前确认状态。",
+        actionLabel: "回到工作台",
+        actionIcon: "home",
+        onAction: function () {
+          navigateTo("/");
+        },
       });
-      els.routeContent.append(title, text, back);
       return;
     }
-    els.routeContent.className = "route-content collaboration-list";
+    const reviewCount = records.filter(function (record) {
+      return record.needsOwnerReview;
+    }).length;
+    const feedbackCount = records.reduce(function (sum, record) {
+      return sum + Number(record.feedbackCount || 0);
+    }, 0);
+    els.routeContent.className = "route-content collaboration-page";
+    els.routeContent.appendChild(createPageSummaryPanel({
+      kicker: "FAMILY FEEDBACK",
+      title: records.length + " 个已发出方案",
+      text: "反馈会先回到这里，由发起人确认后才允许当前版本继续执行。",
+      tags: [
+        { text: reviewCount ? reviewCount + " 个需确认" : "无需确认", tone: reviewCount ? "red" : "green" },
+        { text: feedbackCount + " 条反馈", tone: feedbackCount ? "amber" : "blue" },
+      ],
+      metrics: [
+        { label: "已发出", value: String(records.length), tone: "blue" },
+        { label: "需确认", value: String(reviewCount), tone: reviewCount ? "red" : "green" },
+        { label: "最近更新", value: formatDateTime(records[0].updatedAt || records[0].createdAt) || "暂无" },
+      ],
+    }));
+    const list = document.createElement("section");
+    list.className = "collaboration-list";
     records.forEach(function (record) {
       const card = document.createElement("article");
       card.className = "collaboration-record-card";
@@ -1051,7 +1230,7 @@
       const meta = document.createElement("p");
       meta.textContent = [
         "版本 " + (record.planVersion || 1),
-        record.createdAt ? new Date(record.createdAt).toLocaleString("zh-CN") : "",
+        formatDateTime(record.createdAt),
       ].filter(Boolean).join(" · ");
       const tags = document.createElement("div");
       tags.className = "chip-row";
@@ -1063,13 +1242,14 @@
       const open = document.createElement("button");
       open.type = "button";
       open.className = "secondary-btn";
-      open.textContent = "查看协同详情";
+      setButtonContent(open, "forum", "查看协同详情");
       open.addEventListener("click", function () {
         navigateTo("/collaboration/" + encodeURIComponent(record.shareId));
       });
       card.append(status, content, open);
-      els.routeContent.appendChild(card);
+      list.appendChild(card);
     });
+    els.routeContent.appendChild(list);
   }
 
   function renderCollaborationDetailPage(shareId) {
@@ -1082,6 +1262,12 @@
     els.routeContent.className = "route-content";
     els.routeContent.innerHTML = "";
     setRouteNotice("正在读取协同进展...", "");
+    els.routeContent.appendChild(createRouteStatePanel({
+      tone: "loading",
+      icon: "forum",
+      title: "正在读取协同进展",
+      text: "这里会显示查看状态、反馈列表和发起人的确认结果。",
+    }));
     fetchOwnerShare(shareId);
   }
 
@@ -1099,8 +1285,15 @@
     } catch (error) {
       if (state.route.name !== "collaboration-detail" || state.route.shareId !== shareId) return;
       setRouteNotice("暂时无法读取协同进展，已保留本地入口。", "warning");
-      els.routeContent.className = "route-content empty-state";
-      els.routeContent.textContent = "协同详情暂时不可用，请稍后重试。";
+      showRouteState({
+        tone: "warning",
+        icon: "error",
+        title: "协同详情暂时不可用",
+        text: "可以稍后重试；本地协同索引仍然保留。",
+        actionLabel: "返回协同列表",
+        actionIcon: "arrow_back",
+        onAction: function () { navigateTo("/collaboration"); },
+      });
     }
   }
 
@@ -1111,12 +1304,12 @@
     const back = document.createElement("button");
     back.type = "button";
     back.className = "ghost-btn";
-    back.textContent = "协同反馈";
+    setButtonContent(back, "arrow_back", "协同反馈");
     back.addEventListener("click", function () { navigateTo("/collaboration"); });
     const openShare = document.createElement("button");
     openShare.type = "button";
     openShare.className = "secondary-btn";
-    openShare.textContent = "打开给对方看的页面";
+    setButtonContent(openShare, "open_in_new", "打开给对方看的页面");
     openShare.disabled = !record.shareUrl;
     openShare.addEventListener("click", function () {
       if (record.shareUrl) navigateTo(record.shareUrl);
@@ -1124,7 +1317,7 @@
     const confirm = document.createElement("button");
     confirm.type = "button";
     confirm.className = "primary-btn";
-    confirm.textContent = "继续使用当前版本";
+    setButtonContent(confirm, "check_circle", "继续使用当前版本");
     confirm.disabled = !data.needsOwnerReview;
     confirm.addEventListener("click", function () {
       reviewOwnerShare(data.share.shareId);
@@ -1163,7 +1356,14 @@
       makeTag(data.feedback.length + " 条反馈", data.feedback.length ? "amber" : ""),
       makeTag(data.needsOwnerReview ? "需确认" : "已确认", data.needsOwnerReview ? "red" : "green")
     );
-    content.append(title, text, tags);
+    const metrics = document.createElement("div");
+    metrics.className = "route-metric-grid";
+    metrics.append(
+      createMetricCard("已查看", String(data.reviewers.length), "blue"),
+      createMetricCard("反馈数量", String(data.feedback.length), data.feedback.length ? "amber" : "green"),
+      createMetricCard("确认状态", data.needsOwnerReview ? "待确认" : "已确认", data.needsOwnerReview ? "red" : "green")
+    );
+    content.append(title, text, tags, metrics);
     panel.appendChild(content);
     return panel;
   }
@@ -1222,7 +1422,14 @@
     (selected.cards || []).slice(0, 4).forEach(function (card) {
       tags.appendChild(makeTag(card.title || card.type || "安排项", "blue"));
     });
-    panel.append(title, text, tags);
+    const metrics = document.createElement("div");
+    metrics.className = "route-metric-grid";
+    metrics.append(
+      createMetricCard("方案版本", selected.version ? String(selected.version) : "只读", "blue"),
+      createMetricCard("安排项", String((selected.cards || []).length), "green"),
+      createMetricCard("时长", selected.durationText || "暂无")
+    );
+    panel.append(title, text, tags, metrics);
     return panel;
   }
 
@@ -1254,6 +1461,12 @@
     els.routeContent.className = "route-content";
     els.routeContent.innerHTML = "";
     setRouteNotice("正在打开共享方案...", "");
+    els.routeContent.appendChild(createRouteStatePanel({
+      tone: "loading",
+      icon: "description",
+      title: "正在打开共享方案",
+      text: "如果链接有效，你会看到只读方案和反馈入口。",
+    }));
     fetchPublicShare(shareId);
   }
 
@@ -1262,8 +1475,15 @@
     const access = params.get("token") || "";
     if (!access) {
       setRouteNotice("访问凭证缺失，无法打开共享方案。", "warning");
-      els.routeContent.className = "route-content empty-state";
-      els.routeContent.textContent = "请让发起人重新发送本地分享页。";
+      showRouteState({
+        tone: "warning",
+        icon: "vpn_key_off",
+        title: "访问凭证缺失",
+        text: "请让发起人重新发送这条分享链接，或者确认地址里带有 token。",
+        actionLabel: "返回协同列表",
+        actionIcon: "arrow_back",
+        onAction: function () { navigateTo("/collaboration"); },
+      });
       return;
     }
     try {
@@ -1279,8 +1499,15 @@
     } catch (error) {
       if (state.route.name !== "share-detail" || state.route.shareId !== shareId) return;
       setRouteNotice("共享方案暂时无法打开，请让发起人重新发送。", "warning");
-      els.routeContent.className = "route-content empty-state";
-      els.routeContent.textContent = "当前链接不可用。";
+      showRouteState({
+        tone: "warning",
+        icon: "link_off",
+        title: "当前链接不可用",
+        text: "请让发起人重新发送链接；本地协同索引不会被清空。",
+        actionLabel: "返回协同列表",
+        actionIcon: "arrow_back",
+        onAction: function () { navigateTo("/collaboration"); },
+      });
     }
   }
 
@@ -1304,6 +1531,11 @@
     panel.className = "public-feedback-panel";
     const title = document.createElement("h2");
     title.textContent = "把你的想法告诉发起人";
+    const tip = document.createElement("p");
+    tip.className = "muted-copy";
+    tip.textContent = data.readOnly
+      ? "这个链接已进入只读状态，无法继续提交反馈。"
+      : "反馈会同步回发起人页面，并可能影响是否继续执行当前版本。";
     const nameLabel = document.createElement("label");
     nameLabel.className = "field-label";
     nameLabel.textContent = "你的称呼";
@@ -1343,7 +1575,7 @@
       });
       actions.appendChild(button);
     });
-    panel.append(title, nameLabel, nameInput, feedbackLabel, comment, actions);
+    panel.append(title, tip, nameLabel, nameInput, feedbackLabel, comment, actions);
     return panel;
   }
 
@@ -1418,6 +1650,15 @@
       els.routeTitle.textContent = "未找到稳定方案";
       els.routeSubtitle.textContent = "当前地址没有可恢复的本地方案数据。";
       setRouteNotice("已保留现有已保存版本，没有覆盖任何方案。", "warning");
+      showRouteState({
+        tone: "warning",
+        icon: "travel_explore",
+        title: "没有找到可恢复的方案",
+        text: "当前地址没有对应的本地方案数据。可以回到工作台重新生成，或查看已保存版本。",
+        actionLabel: "查看已保存版本",
+        actionIcon: "bookmark",
+        onAction: function () { navigateTo("/saved-plans"); },
+      });
       return;
     }
 
@@ -1436,24 +1677,24 @@
     const listButton = document.createElement("button");
     listButton.type = "button";
     listButton.className = "ghost-btn";
-    listButton.textContent = "已保存版本";
+    setButtonContent(listButton, "bookmark", "已保存版本");
     listButton.addEventListener("click", function () { navigateTo("/saved-plans"); });
     const saveButton = document.createElement("button");
     saveButton.type = "button";
     saveButton.className = "primary-btn";
-    saveButton.textContent = isSaved && !workspace.dirty ? "保存为新版本" : "保存方案";
+    setButtonContent(saveButton, "save", isSaved && !workspace.dirty ? "保存为新版本" : "保存方案");
     saveButton.addEventListener("click", saveCurrentDetail);
     const executeButton = document.createElement("button");
     executeButton.type = "button";
     executeButton.className = "secondary-btn";
-    executeButton.textContent = "开始执行";
+    setButtonContent(executeButton, "task_alt", "开始执行");
     executeButton.addEventListener("click", function () {
       startExecutionFromWorkspace(workspace, plan, selected);
     });
     const shareButton = document.createElement("button");
     shareButton.type = "button";
     shareButton.className = "secondary-btn";
-    shareButton.textContent = "发给家人朋友";
+    setButtonContent(shareButton, "ios_share", "发给家人朋友");
     shareButton.addEventListener("click", function () {
       createShareFromWorkspace(workspace, plan, selected);
     });
@@ -1498,7 +1739,14 @@
       makeTag(workspace.dirty ? "未保存" : "已稳定", workspace.dirty ? "amber" : "green"),
       makeTag((workspace.selectedPayload.lockedRefs || []).length + " 个已确认事项")
     );
-    summary.append(title, text, tags);
+    const metrics = document.createElement("div");
+    metrics.className = "route-metric-grid";
+    metrics.append(
+      createMetricCard("当前版本", String(workspace.context.version), "blue"),
+      createMetricCard("保存状态", workspace.dirty ? "未保存" : "已稳定", workspace.dirty ? "amber" : "green"),
+      createMetricCard("已确认", String((workspace.selectedPayload.lockedRefs || []).length))
+    );
+    summary.append(title, text, tags, metrics);
     const actions = document.createElement("div");
     actions.className = "detail-inline-actions";
     if (workspace.undoWorkspace) {
