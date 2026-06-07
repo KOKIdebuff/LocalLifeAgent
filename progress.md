@@ -1680,3 +1680,66 @@ fallback 映射：
 
 - 自动化契约与行为验证通过。
 - 视觉与真实交互 QA 阻塞，不能声明本切片已完成浏览器验收。
+
+## 2026-06-07 V5 执行中心垂直切片
+
+### 已完成
+
+- 新增 `/executions` 与 `/executions/:executionId` 前端路由，顶栏“执行记录”进入独立执行中心页面。
+- 复用现有 `/api/executions`、`/api/executions/{executionId}`、`/advance`、`/cancel` 接口，不修改公共接口形状。
+- 工作台、行程详情和已保存版本详情均可开始执行；创建成功后写入轻量本地执行索引，并跳转到执行详情。
+- 执行列表展示方案名、版本、状态、创建/更新时间和事项数量；刷新后仍可从本地索引进入详情并由服务端查询进度。
+- 执行详情展示进度总览、当前要处理事项、完成比例、处理事项列表、继续下一步和取消执行。
+- 文案已收敛为用户可理解表达，不暴露 `mock`、`step`、`advance`、`executionId` 等内部词。
+- 按 Product Design 插件的产品原型思路对新增执行中心 UI 做了设计调整：列表状态卡、详情进度卡、步骤状态轴和空状态入口。
+
+### 验证
+
+- `node --check app.js`：通过。
+- `npm.cmd test`：通过。
+- `python -m py_compile server.py`：通过。
+- `python -m unittest test_contract_schemas.py`：23 项通过。
+- `git diff --check -- app.js styles.css`：通过，仅有 Windows CRLF 提示。
+
+### 未完成或阻塞
+
+- `python -m unittest test_execution_api.py`：当前全局 Python 环境缺少 `fastapi`，未能执行。
+- `python -m unittest test_runtime_api.py`：当前全局 Python 环境缺少 `pytest`，未能执行。
+- 内置浏览器工具未暴露可用 Browser 操作能力；此前通过 Node REPL 尝试连接也报 `windows sandbox failed: spawn setup refresh`，因此未完成 1440×900、1024×768、390×844 的真实视觉和交互 QA。
+
+### 当前边界
+
+- 本切片不做真实订座、真实支付、真实消息发送。
+- 本切片不做分享协作页、Main / Derived Plan Branch，也不重写后端执行模块。
+
+## 2026-06-07 V5 本地协同反馈垂直切片
+
+### 已完成
+
+- 新增本地协同反馈入口：`/collaboration`、`/collaboration/:shareId` 和 `/share/:shareId`。
+- 方案详情和已保存版本详情新增“发给家人朋友”，从当前选中方案生成只读分享快照。
+- 新增独立 `collaboration` 后端领域模块，采用 SQLite + API 保存分享、查看状态、反馈、发起人确认和协同事件。
+- 新增本地协同 API：创建分享、读取分享页、提交反馈、发起人读取详情、发起人确认当前版本。
+- 分享 token 只保存 hash；错误凭证拒绝访问，过期分享页只读且不能继续提交反馈。
+- 发起人协同详情展示已查看、已反馈、需确认状态；“根据反馈生成新方案”只作为禁用入口，不创建 Derived Branch。
+- “开始执行”前检查当前版本是否存在未确认担心类反馈；有待确认反馈时显示协同闸门，不进入执行。
+- UI 文案按产品语义表达，不把 token、shareId、branch、schema 等内部概念暴露给用户。
+
+### 验证
+
+- `node --check app.js`：通过。
+- `node --check saved-plans.js`：通过。
+- `python -m py_compile server.py collaboration\\*.py test_collaboration_api.py`：通过。
+- `npm.cmd test`：通过。
+- `python -m unittest test_contract_schemas.py`：23 项通过。
+- `.\\.venv\\Scripts\\python.exe -m pytest test_collaboration_api.py test_execution_api.py test_runtime_api.py`：50 项通过，存在第三方库 deprecation warning 和 pytest cache warning。
+- `git diff --check -- app.js index.html saved-plans.js saved-plans-tests.js server.py styles.css ui-shell-tests.js test_collaboration_api.py collaboration`：通过，仅有 Windows CRLF 提示。
+
+### 未完成或阻塞
+
+- 当前会话未暴露可用 in-app Browser 操作工具，无法完成 `/collaboration`、`/collaboration/:shareId`、`/share/:shareId?token=...` 的真实视觉与交互 QA，也无法覆盖 1440×900、1024×768、390×844 尺寸验收。
+
+### 当前边界
+
+- 本切片不做公网分享、真实账号、真实外部协作者、真实消息发送、真实支付或真实订座。
+- 本切片不生成 Derived Branch；反馈生成新方案、采纳、拒绝和回滚留给下一切片。
