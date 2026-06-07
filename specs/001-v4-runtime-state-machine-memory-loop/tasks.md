@@ -157,9 +157,9 @@ Transition Engine implementation is complete.
 - [x] T047 Rename `executionContractOnly` to `executionImplementationRequired` with default `false`
 - [x] T048 Add drift, legal/illegal transition, terminal-state, concurrency, recovery, and V5 projection contract tests
 - [x] T052 Split Runtime target capabilities from authoritative effective capabilities
-- [ ] T049 Implement SQLite Runtime session / Event / Recovery Point repositories
-- [ ] T050 Implement server-side Transition Engine and atomic Event + session writes
-- [ ] T051 Implement product-grade RuntimeAdapter `submit_event` intent input and persisted session state without breaking the current alpha `/api/runtime`
+- [x] T049 Implement SQLite Runtime session / Event / Recovery Point repositories
+- [x] T050 Implement server-side Transition Engine and atomic Event + session writes
+- [x] T051 Implement product-grade RuntimeAdapter `submit_event` intent input and persisted session state without breaking the current alpha `/api/runtime`
 
 ---
 
@@ -172,18 +172,18 @@ expanding V5 P0 or adding Execution task/step ownership.
 - [x] T054 Freeze dual-entry architecture: legacy `POST /api/runtime` through `CompatibilityAdapter`, new `/api/runtime/sessions/*` through `RuntimeAdapter`, one Runtime Core
 - [x] T055 Freeze existing-SQLite strategy with independent Runtime tables and `runtime_schema_migrations`
 - [x] T056 Freeze Runtime/Execution ownership: V4 P0 stores only Execution references and summary Events; task/step lifecycle moves to Execution P1
-- [ ] T057 Freeze legacy `POST /api/runtime` golden request/response fixtures before Core integration
-- [ ] T058 Define versioned Session API DTOs and HTTP error mapping
-- [ ] T059 Implement Runtime repositories, migration runner, busy timeout, unique sequence/idempotency constraints, and payload allowlists
-- [ ] T060 Implement the `v4-p0-2` Transition Engine from `runtime-state-machine.json`
-- [ ] T061 Implement atomic Event + Session writes, optimistic locking, and rollback-on-failure tests
-- [ ] T062 Implement RuntimeAdapter and `/api/runtime/sessions/*` routes
-- [ ] T063 Implement conversion-only CompatibilityAdapter and legacy response projection
-- [ ] T064 Add product-grade Runtime feature flag, disabled by default, with immediate legacy fallback
-- [ ] T065 Add shadow comparison for old/new core results without dual writes
-- [ ] T066 Add capability query backed by effective implementation state
-- [ ] T067 Add restart recovery, duplicate request, concurrency conflict, event ordering, latest Recovery Point, and rollback integration tests
-- [ ] T068 Run legacy golden, V4 contract, backend, and V5 compatibility regression gates
+- [x] T057 Freeze legacy `POST /api/runtime` golden request/response fixtures before Core integration
+- [x] T058 Define versioned Session API DTOs and HTTP error mapping
+- [x] T059 Implement Runtime repositories, migration runner, busy timeout, unique sequence/idempotency constraints, and payload allowlists
+- [x] T060 Implement the `v4-p0-2` Transition Engine from `runtime-state-machine.json`
+- [x] T061 Implement atomic Event + Session writes, optimistic locking, and rollback-on-failure tests
+- [x] T062 Implement RuntimeAdapter and `/api/runtime/sessions/*` routes
+- [x] T063 Implement conversion-only CompatibilityAdapter and legacy response projection
+- [x] T064 Add product-grade Runtime feature flag, disabled by default, with immediate legacy fallback
+- [x] T065 Add shadow comparison for old/new core results without dual writes
+- [x] T066 Add capability query backed by effective implementation state
+- [x] T067 Add restart recovery, duplicate request, concurrency conflict, event ordering, latest Recovery Point, and rollback integration tests
+- [x] T068 Run legacy golden, V4 contract, backend, and V5 compatibility regression gates
 
 ---
 

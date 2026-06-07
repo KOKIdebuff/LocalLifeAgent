@@ -12,7 +12,7 @@ frontend-independent consumption without changing current planning behavior.
 | Intent schema parses | `intent.schema.json` | JSON syntax is valid |
 | Feedback/memory schema parses | `feedback-memory.schema.json` | JSON syntax is valid |
 | Runtime schema parses | `runtime.schema.json` | JSON syntax is valid |
-| Thin Runtime status | `runtime.schema.json` | `x-apiStatus` is `thin_runtime_implemented` |
+| Runtime status | `runtime.schema.json` | `x-apiStatus` is `thin_runtime_and_product_runtime_p0_implemented` |
 | Hybrid frontend rule | `runtime.schema.json` and contract docs | new UI uses `agent-core.js` for planning and Runtime for state/enhancement |
 
 ## Feedback and Memory
@@ -59,7 +59,7 @@ frontend-independent consumption without changing current planning behavior.
 | Recovery snapshot | `RuntimeRecoveryPoint` | snapshot keeps stable Runtime fields and excludes full UI / raw LLM / large execution data |
 | Rollback append-only | recovery and persistence policies | rollback creates a new version and Event without overwriting history |
 | Target capability status | `targetCapabilities.status` | `supported` means contract frozen; `degraded` means contract frozen with limits; `unsupported` means out-of-scope decision frozen |
-| Effective capability truth | `effectiveCapabilities.availability` | V4 alpha exposes available contract tests, degraded state/Event response behavior, and unavailable persisted Runtime, recovery, rollback, RuntimeAdapter, and capability query |
+| Effective capability truth | `effectiveCapabilities.availability` | Product-grade Runtime P0 exposes available persisted sessions, state machine, Event stream, persistence, Recovery Point, RuntimeAdapter, capability query, and contract tests; rollback remains degraded and task replay / external compensation remain unavailable |
 | Capability consumer rule | Runtime capability contract | clients enable features only from `effectiveCapabilities`; `targetCapabilities` is planning and acceptance metadata |
 | Persistence tables | persistence policy | P0 adds independent Runtime session, Event, Recovery Point, and Runtime migration tables to the existing SQLite file and does not migrate thin temporary sessions |
 | Dual-entry architecture | compatibility policy | legacy and new APIs delegate to one Runtime Core; CompatibilityAdapter contains no business rules |

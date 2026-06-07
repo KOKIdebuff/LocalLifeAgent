@@ -192,14 +192,13 @@ failure.
 - task replay and external compensation: `unsupported`, meaning their exclusion
   from the target is explicitly frozen
 
-`effectiveCapabilities` records current V4 alpha truth:
+`effectiveCapabilities` records current V4 Runtime implementation truth:
 
-- contract tests: `available`
-- state machine and Event stream: `degraded`; the thin endpoint returns
-  state-shaped responses and transient Events but has no persisted Transition
-  Engine or queryable Event stream
-- session lifecycle, Runtime persistence, Recovery Point, rollback primitive,
-  RuntimeAdapter, and capability query: `unavailable`
+- session lifecycle, state machine, Event stream, Runtime persistence, Recovery
+  Point, RuntimeAdapter, capability query, and contract tests: `available`
+- rollback primitive: `degraded`; latest-only Recovery Point storage is
+  implemented, while full restore, external compensation, and task replay remain
+  out of scope
 - task replay and external compensation: `unavailable`
 
 Clients must not use `targetCapabilities` to enable a UI action.

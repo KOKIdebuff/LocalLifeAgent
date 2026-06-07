@@ -12,8 +12,9 @@ that aggregates Runtime state and backend enhancement results. Frontend planning
 and Mock execution behavior remain unchanged. The next V4 Runtime P0 contract
 uses `runtime-state-machine.json` as the single state-machine source and freezes
 persisted sessions, Command/Event separation, optimistic locking, atomic writes,
-Recovery Points, and V5 read-only Runtime projection without claiming the
-Transition Engine implementation is complete.
+Recovery Points, and V5 read-only Runtime projection. The product-grade Runtime
+P0 implementation now includes the server-side Transition Engine and persisted
+Runtime repositories.
 
 The approved implementation architecture is dual-entry with one state
 authority: the existing `POST /api/runtime` is preserved behind a
@@ -27,7 +28,7 @@ not implemented by V4 Runtime P0.
 
 **Language/Version**: JavaScript for the current static demo, Python 3.12 for the optional backend  
 **Primary Dependencies**: Existing FastAPI, Pydantic, httpx, pytest, optional LangGraph, local browser JavaScript  
-**Storage**: Existing local SQLite file plus audit JSONL; additive independent Runtime session / Event / Recovery Point / Runtime migration tables are planned but not implemented by the contract-freeze phase
+**Storage**: Existing local SQLite file plus audit JSONL; additive independent Runtime session / Event / Recovery Point / Runtime migration tables are implemented for Runtime P0
 **Testing**: `npm.cmd test`, `.venv` Python compile checks, contract unittest, and `.venv` pytest baseline
 **Target Platform**: Local Windows development and browser demo  
 **Project Type**: Static Web Demo with optional local API backend  
