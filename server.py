@@ -5,12 +5,14 @@ from pathlib import Path
 from uuid import uuid4
 
 import httpx
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from collaboration import CollaborationAdapter
+from collaboration.errors import CollaborationError
 from execution import ExecutionAdapter
 from execution.errors import ExecutionError
 from backend_core import (
@@ -59,6 +61,9 @@ async def serve_spa_routes(request, call_next):
             or request.url.path.startswith("/saved-plans/")
             or request.url.path == "/executions"
             or request.url.path.startswith("/executions/")
+            or request.url.path == "/collaboration"
+            or request.url.path.startswith("/collaboration/")
+            or request.url.path.startswith("/share/")
         )
     ):
         return FileResponse(INDEX_FILE)
@@ -182,6 +187,35 @@ class ExecutionCancelRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=500)
 
 
+class ShareCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sessionId: str | None = Field(default=None, max_length=160)
+    lineageId: str | None = Field(default=None, max_length=160)
+    planVersion: int = Field(ge=1)
+    planName: str | None = Field(default=None, max_length=200)
+    snapshot: dict
+    idempotencyKey: str = Field(min_length=1, max_length=160)
+    expiresAt: str | None = Field(default=None, max_length=80)
+
+
+class ShareFeedbackRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    displayName: str = Field(default="家人朋友", min_length=1, max_length=80)
+    role: str = Field(default="family", max_length=40)
+    targetType: str = Field(pattern="^(whole_plan|activity|restaurant|transport|timeline|budget)$")
+    targetId: str | None = Field(default=None, max_length=160)
+    reaction: str = Field(pattern="^(like|concern|restaurant_ok|comment|dislike)$")
+    comment: str | None = Field(default=None, max_length=500)
+
+
+class ShareOwnerReviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    decision: str = Field(pattern="^(continue_current_version)$")
+
+
 RUNTIME_TRANSITIONS = {
     "intent_loading": ["clarifying", "planning_local", "failed_recoverable"],
     "clarifying": ["planning_local"],
@@ -277,6 +311,11 @@ def execution_adapter():
     return ExecutionAdapter(current["db_path"])
 
 
+def collaboration_adapter():
+    current = get_settings()
+    return CollaborationAdapter(current["db_path"])
+
+
 def runtime_error_response(exc):
     if isinstance(exc, RuntimeErrorBase):
         return JSONResponse(status_code=exc.http_status, content=exc.to_payload())
@@ -289,6 +328,14 @@ def execution_error_response(exc):
     if isinstance(exc, RuntimeErrorBase):
         return JSONResponse(status_code=exc.http_status, content=exc.to_payload())
     if isinstance(exc, ExecutionError):
+        return JSONResponse(status_code=exc.http_status, content=exc.to_payload())
+    if isinstance(exc, sqlite3.Error):
+        return JSONResponse(status_code=503, content=storage_error_payload())
+    raise exc
+
+
+def collaboration_error_response(exc):
+    if isinstance(exc, CollaborationError):
         return JSONResponse(status_code=exc.http_status, content=exc.to_payload())
     if isinstance(exc, sqlite3.Error):
         return JSONResponse(status_code=503, content=storage_error_payload())
@@ -698,6 +745,76 @@ def cancel_execution(execution_id: str, request: ExecutionCancelRequest):
         return result.public_dict()
     except (ExecutionError, RuntimeErrorBase, sqlite3.Error) as exc:
         return execution_error_response(exc)
+
+
+@app.post("/api/plans/{plan_id}/share")
+def create_share(plan_id: str, request: ShareCreateRequest):
+    try:
+        result = collaboration_adapter().create_share(
+            plan_id=plan_id,
+            plan_name=request.planName,
+            session_id=request.sessionId,
+            lineage_id=request.lineageId,
+            plan_version=request.planVersion,
+            snapshot=request.snapshot,
+            idempotency_key=request.idempotencyKey,
+            expires_at=request.expiresAt,
+        )
+        share_id = result["share"]["shareId"]
+        result["shareUrl"] = f"/share/{share_id}?token={result['token']}"
+        return result
+    except (CollaborationError, sqlite3.Error) as exc:
+        return collaboration_error_response(exc)
+
+
+@app.get("/api/shares/{share_id}")
+def get_share(share_id: str, token: str = Query(default=""), displayName: str | None = Query(default=None), role: str | None = Query(default=None)):
+    try:
+        state = collaboration_adapter().get_public_share(
+            share_id=share_id,
+            token=token,
+            display_name=displayName,
+            role=role,
+        )
+        return {"ok": True, **state.public_dict()}
+    except (CollaborationError, sqlite3.Error) as exc:
+        return collaboration_error_response(exc)
+
+
+@app.post("/api/shares/{share_id}/feedback")
+def submit_share_feedback(share_id: str, request: ShareFeedbackRequest, token: str = Query(default="")):
+    try:
+        state = collaboration_adapter().submit_feedback(
+            share_id=share_id,
+            token=token,
+            display_name=request.displayName,
+            role=request.role,
+            target_type=request.targetType,
+            target_id=request.targetId,
+            reaction=request.reaction,
+            comment=request.comment,
+        )
+        return {"ok": True, **state.public_dict()}
+    except (CollaborationError, sqlite3.Error) as exc:
+        return collaboration_error_response(exc)
+
+
+@app.get("/api/shares/{share_id}/owner")
+def get_owner_share(share_id: str):
+    try:
+        state = collaboration_adapter().get_owner_share(share_id)
+        return {"ok": True, **state.public_dict()}
+    except (CollaborationError, sqlite3.Error) as exc:
+        return collaboration_error_response(exc)
+
+
+@app.post("/api/shares/{share_id}/owner-review")
+def review_share_feedback(share_id: str, request: ShareOwnerReviewRequest):
+    try:
+        state = collaboration_adapter().owner_review(share_id=share_id, decision=request.decision)
+        return {"ok": True, **state.public_dict()}
+    except (CollaborationError, sqlite3.Error) as exc:
+        return collaboration_error_response(exc)
 
 
 @app.post("/api/feedback")
