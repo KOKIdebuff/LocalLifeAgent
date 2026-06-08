@@ -2967,7 +2967,9 @@ textarea:focus-visible {
 
 .saved-plan-page,
 .execution-page,
-.collaboration-page {
+.collaboration-page,
+.branch-page,
+.branch-detail-page {
   gap: 16px;
 }
 
@@ -3270,8 +3272,88 @@ textarea:focus-visible {
 .execution-summary-copy .route-metric-grid,
 .collaboration-summary-panel .route-metric-grid,
 .shared-plan-panel .route-metric-grid,
-.detail-lifecycle-panel .route-metric-grid {
+.detail-lifecycle-panel .route-metric-grid,
+.branch-card .chip-row,
+.branch-diff-panel,
+.branch-compare-panel {
   margin-top: 12px;
+}
+
+.branch-list {
+  display: grid;
+  gap: 14px;
+}
+
+.branch-card,
+.branch-diff-panel,
+.branch-compare-card {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.branch-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  padding: 18px 20px;
+}
+
+.branch-card h2,
+.branch-diff-panel h2,
+.branch-compare-card h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.branch-diff-panel,
+.branch-compare-panel {
+  display: grid;
+  gap: 12px;
+  padding: 20px 22px;
+}
+
+.branch-diff-list {
+  display: grid;
+  gap: 12px;
+}
+
+.branch-diff-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  border: 1px solid #e3e9f3;
+  border-radius: 10px;
+  padding: 14px 15px;
+  background: #fcfdff;
+}
+
+.branch-diff-row h3,
+.branch-compare-card h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.branch-diff-row p,
+.branch-compare-card p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.branch-compare-panel {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.branch-compare-card {
+  padding: 18px 20px;
+}
+
+.branch-compare-card.highlighted {
+  border-color: #cfe0f7;
+  background: #f4f8ff;
 }
 
 .execution-progress-visual {
@@ -3674,6 +3756,18 @@ body.secondary-route .agent-rail .agent-panel[data-agent-panel="process"] .rail-
   .collaboration-record-card button {
     width: 100%;
   }
+
+  .branch-card {
+    grid-template-columns: 1fr;
+  }
+
+  .branch-card button {
+    width: 100%;
+  }
+
+  .branch-compare-panel {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 620px) {
@@ -3694,6 +3788,15 @@ body.secondary-route .agent-rail .agent-panel[data-agent-panel="process"] .rail-
   .route-primary-actions button,
   .detail-inline-actions button {
     flex: 1;
+  }
+
+  .branch-diff-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .branch-diff-row .tag,
+  .branch-diff-row .chip-row {
+    grid-column: 1 / -1;
   }
 
   .detail-lifecycle-panel {
