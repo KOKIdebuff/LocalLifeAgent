@@ -85,6 +85,14 @@ lifecycle.storeSnapshot(storage, snapshot);
 assert.strictEqual(lifecycle.getSnapshot(storage, snapshot.snapshotId).selectedPlan.name, snapshot.selectedPlan.name);
 
 assert.deepStrictEqual(lifecycle.parseRoute("/plans/plan-123"), { name: "plan-detail", planId: "plan-123" });
+assert.deepStrictEqual(
+  lifecycle.parseRoute("/plans/plan-123/branches"),
+  { name: "plan-branches", planId: "plan-123" }
+);
+assert.deepStrictEqual(
+  lifecycle.parseRoute("/plans/plan-123/branches/branch-456"),
+  { name: "plan-branch-detail", planId: "plan-123", branchId: "branch-456" }
+);
 assert.deepStrictEqual(lifecycle.parseRoute("/saved-plans"), { name: "saved-plans" });
 assert.deepStrictEqual(
   lifecycle.parseRoute("/saved-plans/44444444-4444-4444-8444-444444444444"),
