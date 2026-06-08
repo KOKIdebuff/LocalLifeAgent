@@ -45,11 +45,7 @@
 
   function parseRoute(pathname) {
     const path = String(pathname || "/").replace(/\/+$/, "") || "/";
-    let match = path.match(/^\/plans\/([^/]+)\/branches\/([^/]+)$/);
-    if (match) return { name: "plan-branch-detail", planId: decodeURIComponent(match[1]), branchId: decodeURIComponent(match[2]) };
-    match = path.match(/^\/plans\/([^/]+)\/branches$/);
-    if (match) return { name: "plan-branches", planId: decodeURIComponent(match[1]) };
-    match = path.match(/^\/plans\/([^/]+)$/);
+    let match = path.match(/^\/plans\/([^/]+)$/);
     if (match) return { name: "plan-detail", planId: decodeURIComponent(match[1]) };
     match = path.match(/^\/saved-plans\/([^/]+)$/);
     if (match) return { name: "saved-plan-detail", snapshotId: decodeURIComponent(match[1]) };

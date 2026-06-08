@@ -37,28 +37,3 @@ class ShareReadOnly(CollaborationError):
 
 class ShareCreateConflict(CollaborationError):
     code = "share_create_conflict"
-
-
-class PlanBranchNotFound(CollaborationError):
-    code = "plan_branch_not_found"
-    http_status = 404
-
-
-class PlanBranchVersionConflict(CollaborationError):
-    code = "version_conflict"
-
-
-class PlanBranchActiveLimitReached(CollaborationError):
-    code = "active_derived_limit_reached"
-
-
-class PlanBranchNotAdoptable(CollaborationError):
-    code = "branch_not_adoptable"
-
-
-class PlanBranchRollbackUnavailable(CollaborationError):
-    code = "rollback_unavailable"
-
-
-class PlanBranchSourceMismatch(CollaborationError):
-    code = "plan_branch_source_mismatch"

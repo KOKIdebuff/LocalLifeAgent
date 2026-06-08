@@ -42,8 +42,6 @@ assert.ok(html.includes('id="route-page"'), "secondary route shell must exist");
 assert.ok(html.indexOf('src="/saved-plans.js"') < html.indexOf('src="/app.js"'), "saved plan runtime must load before app.js");
 assert.ok(app.includes("renderSavedPlansPage"), "app must render the saved plan list route");
 assert.ok(app.includes("renderPlanDetailPage"), "app must render plan detail routes");
-assert.ok(app.includes("renderPlanBranchesPage"), "app must render the plan branch list route");
-assert.ok(app.includes("renderPlanBranchDetailPage"), "app must render the plan branch detail route");
 assert.ok(app.includes("renderExecutionsPage"), "app must render the execution list route");
 assert.ok(app.includes("renderExecutionDetailPage"), "app must render execution detail routes");
 assert.ok(app.includes("renderCollaborationPage"), "app must render the collaboration list route");
@@ -57,8 +55,7 @@ assert.ok(app.includes('"/api/shares/" + encodeURIComponent(shareId) + "/owner"'
 assert.ok(app.includes('"/api/shares/" + encodeURIComponent(shareId) + "/feedback?token="'), "share feedback must submit through the local API");
 assert.ok(app.includes("localLife.collaborationIndex.v1"), "owner collaboration list must use only a lightweight local index");
 assert.ok(app.includes("findBlockingCollaboration"), "execution entry must check collaboration feedback before starting");
-assert.ok(app.includes("生成待采纳调整"), "Plan Branch entry must be available from collaboration feedback");
-assert.ok(app.includes("待采纳调整"), "plan detail must expose the branch list entry");
+assert.ok(app.includes("根据反馈生成新方案"), "Plan Branch next slice entry must remain disabled in this slice");
 assert.ok(app.includes("查看详情与调整安排"), "selected plans must expose a visible detail and adjustment entry");
 assert.ok(app.includes("createDetailTransportBoxes"), "plan detail must show transport blocks inside the plan card");
 assert.ok(app.includes("createTimelineAdjustControl"), "timeline replan controls must sit on timeline rows");
