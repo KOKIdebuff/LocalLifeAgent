@@ -106,6 +106,47 @@ class CollaborationEvent:
 
 
 @dataclass(frozen=True)
+class PlanBranch:
+    branchId: str
+    planId: str
+    lineageId: str | None
+    branchType: str
+    status: str
+    baseVersion: int
+    parentVersion: int | None
+    previousMainBranchId: str | None
+    sourceShareId: str | None
+    snapshot: dict[str, Any]
+    feedbackIds: list[str]
+    diffSummary: list[dict[str, Any]]
+    createdBy: str
+    createdAt: str
+    updatedAt: str
+
+    def public_dict(self) -> dict[str, Any]:
+        data = asdict(self)
+        data["snapshot"] = self.snapshot
+        data["feedbackIds"] = list(self.feedbackIds)
+        data["diffSummary"] = list(self.diffSummary)
+        return data
+
+
+@dataclass(frozen=True)
+class PlanBranchEvent:
+    eventId: str
+    planId: str
+    branchId: str | None
+    eventType: str
+    eventVersion: str
+    actorType: str
+    payload: dict[str, Any]
+    createdAt: str
+
+    def public_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
 class ShareState:
     share: ShareRecord
     reviewers: list[ShareReviewer]

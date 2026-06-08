@@ -6,12 +6,21 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
-from .errors import ShareNotFound
+from .errors import (
+    PlanBranchActiveLimitReached,
+    PlanBranchNotAdoptable,
+    PlanBranchNotFound,
+    PlanBranchRollbackUnavailable,
+    PlanBranchVersionConflict,
+    ShareNotFound,
+)
 from .models import (
     COLLABORATION_EVENT_VERSION,
     COLLABORATION_SCHEMA_VERSION,
     CollaborationEvent,
     OwnerReview,
+    PlanBranch,
+    PlanBranchEvent,
     ShareFeedback,
     ShareRecord,
     ShareReviewer,
@@ -134,6 +143,49 @@ def _migrate(conn: sqlite3.Connection) -> None:
         """
     )
     conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS plan_branches (
+          branch_id TEXT PRIMARY KEY,
+          plan_id TEXT NOT NULL,
+          lineage_id TEXT,
+          branch_type TEXT NOT NULL,
+          status TEXT NOT NULL,
+          base_version INTEGER NOT NULL,
+          parent_version INTEGER,
+          previous_main_branch_id TEXT,
+          source_share_id TEXT,
+          snapshot_json TEXT NOT NULL,
+          feedback_ids_json TEXT NOT NULL,
+          diff_summary_json TEXT NOT NULL,
+          created_by TEXT NOT NULL,
+          create_idempotency_key TEXT UNIQUE,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY(source_share_id) REFERENCES shares(share_id)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_plan_branches_plan_status
+        ON plan_branches (plan_id, branch_type, status)
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS plan_branch_events (
+          event_id TEXT PRIMARY KEY,
+          plan_id TEXT NOT NULL,
+          branch_id TEXT,
+          event_type TEXT NOT NULL,
+          event_version TEXT NOT NULL,
+          actor_type TEXT NOT NULL,
+          payload_json TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
         "INSERT OR IGNORE INTO collaboration_schema_migrations (version, applied_at) VALUES (?, ?)",
         (MIGRATION_VERSION, utc_now()),
     )
@@ -219,6 +271,39 @@ def _event_from_row(row: sqlite3.Row) -> CollaborationEvent:
     return CollaborationEvent(
         eventId=row["event_id"],
         shareId=row["share_id"],
+        eventType=row["event_type"],
+        eventVersion=row["event_version"],
+        actorType=row["actor_type"],
+        payload=json.loads(row["payload_json"] or "{}"),
+        createdAt=row["created_at"],
+    )
+
+
+def _branch_from_row(row: sqlite3.Row) -> PlanBranch:
+    return PlanBranch(
+        branchId=row["branch_id"],
+        planId=row["plan_id"],
+        lineageId=row["lineage_id"],
+        branchType=row["branch_type"],
+        status=row["status"],
+        baseVersion=row["base_version"],
+        parentVersion=row["parent_version"],
+        previousMainBranchId=row["previous_main_branch_id"],
+        sourceShareId=row["source_share_id"],
+        snapshot=json.loads(row["snapshot_json"] or "{}"),
+        feedbackIds=json.loads(row["feedback_ids_json"] or "[]"),
+        diffSummary=json.loads(row["diff_summary_json"] or "[]"),
+        createdBy=row["created_by"],
+        createdAt=row["created_at"],
+        updatedAt=row["updated_at"],
+    )
+
+
+def _branch_event_from_row(row: sqlite3.Row) -> PlanBranchEvent:
+    return PlanBranchEvent(
+        eventId=row["event_id"],
+        planId=row["plan_id"],
+        branchId=row["branch_id"],
         eventType=row["event_type"],
         eventVersion=row["event_version"],
         actorType=row["actor_type"],
@@ -450,6 +535,295 @@ class CollaborationRepository:
             )
             return self.get_state_with_conn(conn, share_id)
 
+    def list_plan_branches(self, plan_id: str) -> list[PlanBranch]:
+        conn = connect(self.db_path)
+        try:
+            _migrate(conn)
+            return [
+                _branch_from_row(row)
+                for row in conn.execute(
+                    "SELECT * FROM plan_branches WHERE plan_id = ? ORDER BY created_at DESC",
+                    (plan_id,),
+                ).fetchall()
+            ]
+        finally:
+            conn.close()
+
+    def get_plan_branch(self, *, plan_id: str, branch_id: str) -> PlanBranch:
+        conn = connect(self.db_path)
+        try:
+            _migrate(conn)
+            return self.get_plan_branch_with_conn(conn, plan_id=plan_id, branch_id=branch_id)
+        finally:
+            conn.close()
+
+    def get_plan_branch_with_conn(self, conn: sqlite3.Connection, *, plan_id: str, branch_id: str) -> PlanBranch:
+        row = conn.execute(
+            "SELECT * FROM plan_branches WHERE plan_id = ? AND branch_id = ?",
+            (plan_id, branch_id),
+        ).fetchone()
+        if not row:
+            raise PlanBranchNotFound(planId=plan_id, branchId=branch_id)
+        return _branch_from_row(row)
+
+    def create_derived_branch(
+        self,
+        *,
+        plan_id: str,
+        source_share_id: str,
+        base_version: int,
+        snapshot: dict[str, Any],
+        lineage_id: str | None,
+        feedback_ids: list[str],
+        diff_summary: list[dict[str, Any]],
+        idempotency_key: str,
+        actor: str,
+    ) -> tuple[PlanBranch, bool]:
+        with collaboration_transaction(self.db_path) as conn:
+            existing = conn.execute(
+                "SELECT * FROM plan_branches WHERE create_idempotency_key = ?",
+                (idempotency_key,),
+            ).fetchone()
+            if existing:
+                return _branch_from_row(existing), True
+
+            source_share = self.get_state_with_conn(conn, source_share_id).share
+            main = self.ensure_main_branch_with_conn(
+                conn,
+                plan_id=plan_id,
+                source_share_id=source_share_id,
+                snapshot=source_share.snapshot,
+                lineage_id=source_share.lineageId,
+                base_version=source_share.planVersion,
+                actor=actor,
+            )
+            if main.baseVersion != base_version:
+                raise PlanBranchVersionConflict(
+                    planId=plan_id,
+                    expectedVersion=main.baseVersion,
+                    actualVersion=base_version,
+                )
+
+            active = conn.execute(
+                """
+                SELECT COUNT(*) AS count FROM plan_branches
+                WHERE plan_id = ? AND branch_type = 'derived' AND status = 'proposed'
+                """,
+                (plan_id,),
+            ).fetchone()["count"]
+            if active >= 3:
+                raise PlanBranchActiveLimitReached(planId=plan_id, activeDerivedCount=active)
+
+            now = utc_now()
+            branch_id = new_id("branch")
+            conn.execute(
+                """
+                INSERT INTO plan_branches
+                  (branch_id, plan_id, lineage_id, branch_type, status, base_version,
+                   parent_version, previous_main_branch_id, source_share_id, snapshot_json,
+                   feedback_ids_json, diff_summary_json, created_by, create_idempotency_key,
+                   created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    branch_id,
+                    plan_id,
+                    lineage_id,
+                    "derived",
+                    "proposed",
+                    base_version,
+                    main.baseVersion,
+                    main.branchId,
+                    source_share_id,
+                    _json(snapshot),
+                    _json(feedback_ids),
+                    _json(diff_summary),
+                    actor or "owner",
+                    idempotency_key,
+                    now,
+                    now,
+                ),
+            )
+            self.append_plan_branch_event(
+                conn,
+                plan_id=plan_id,
+                branch_id=branch_id,
+                event_type="plan_branch_created",
+                actor_type=actor or "owner",
+                payload={"sourceShareId": source_share_id, "feedbackIds": feedback_ids, "baseVersion": base_version},
+            )
+            return self.get_plan_branch_with_conn(conn, plan_id=plan_id, branch_id=branch_id), False
+
+    def ensure_main_branch_with_conn(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        plan_id: str,
+        source_share_id: str | None,
+        snapshot: dict[str, Any],
+        lineage_id: str | None,
+        base_version: int,
+        actor: str,
+    ) -> PlanBranch:
+        current = conn.execute(
+            """
+            SELECT * FROM plan_branches
+            WHERE plan_id = ? AND branch_type = 'main' AND status = 'adopted'
+            ORDER BY updated_at DESC LIMIT 1
+            """,
+            (plan_id,),
+        ).fetchone()
+        if current:
+            return _branch_from_row(current)
+        now = utc_now()
+        branch_id = new_id("branch")
+        conn.execute(
+            """
+            INSERT INTO plan_branches
+              (branch_id, plan_id, lineage_id, branch_type, status, base_version,
+               parent_version, previous_main_branch_id, source_share_id, snapshot_json,
+               feedback_ids_json, diff_summary_json, created_by, create_idempotency_key,
+               created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                branch_id,
+                plan_id,
+                lineage_id,
+                "main",
+                "adopted",
+                base_version,
+                None,
+                None,
+                source_share_id,
+                _json(snapshot),
+                _json([]),
+                _json([]),
+                actor or "owner",
+                None,
+                now,
+                now,
+            ),
+        )
+        self.append_plan_branch_event(
+            conn,
+            plan_id=plan_id,
+            branch_id=branch_id,
+            event_type="plan_branch_created",
+            actor_type=actor or "owner",
+            payload={"branchType": "main", "baseVersion": base_version},
+        )
+        return self.get_plan_branch_with_conn(conn, plan_id=plan_id, branch_id=branch_id)
+
+    def adopt_plan_branch(self, *, plan_id: str, branch_id: str, expected_version: int, actor: str) -> PlanBranch:
+        with collaboration_transaction(self.db_path) as conn:
+            branch = self.get_plan_branch_with_conn(conn, plan_id=plan_id, branch_id=branch_id)
+            if branch.branchType != "derived" or branch.status != "proposed":
+                raise PlanBranchNotAdoptable(planId=plan_id, branchId=branch_id, status=branch.status)
+            current = self.get_current_main_with_conn(conn, plan_id=plan_id)
+            if current.baseVersion != expected_version or branch.baseVersion != expected_version:
+                raise PlanBranchVersionConflict(
+                    planId=plan_id,
+                    expectedVersion=current.baseVersion,
+                    actualVersion=expected_version,
+                )
+            now = utc_now()
+            conn.execute(
+                "UPDATE plan_branches SET status = 'archived', updated_at = ? WHERE branch_id = ?",
+                (now, current.branchId),
+            )
+            next_version = current.baseVersion + 1
+            next_snapshot = dict(branch.snapshot)
+            selected = dict(next_snapshot.get("selectedPlan") or {})
+            selected["version"] = next_version
+            next_snapshot["selectedPlan"] = selected
+            conn.execute(
+                """
+                UPDATE plan_branches
+                SET branch_type = 'main', status = 'adopted', base_version = ?,
+                    previous_main_branch_id = ?, snapshot_json = ?, updated_at = ?
+                WHERE branch_id = ?
+                """,
+                (next_version, current.branchId, _json(next_snapshot), now, branch_id),
+            )
+            self.append_plan_branch_event(
+                conn,
+                plan_id=plan_id,
+                branch_id=branch_id,
+                event_type="plan_branch_adopted",
+                actor_type=actor or "owner",
+                payload={"previousMainBranchId": current.branchId, "version": next_version},
+            )
+            return self.get_plan_branch_with_conn(conn, plan_id=plan_id, branch_id=branch_id)
+
+    def reject_plan_branch(self, *, plan_id: str, branch_id: str, actor: str, reason: str | None = None) -> PlanBranch:
+        with collaboration_transaction(self.db_path) as conn:
+            branch = self.get_plan_branch_with_conn(conn, plan_id=plan_id, branch_id=branch_id)
+            if branch.branchType != "derived" or branch.status != "proposed":
+                raise PlanBranchNotAdoptable(planId=plan_id, branchId=branch_id, status=branch.status)
+            now = utc_now()
+            conn.execute(
+                "UPDATE plan_branches SET status = 'rejected', updated_at = ? WHERE branch_id = ?",
+                (now, branch_id),
+            )
+            self.append_plan_branch_event(
+                conn,
+                plan_id=plan_id,
+                branch_id=branch_id,
+                event_type="plan_branch_rejected",
+                actor_type=actor or "owner",
+                payload={"reason": reason or ""},
+            )
+            return self.get_plan_branch_with_conn(conn, plan_id=plan_id, branch_id=branch_id)
+
+    def rollback_previous_main(self, *, plan_id: str, actor: str) -> PlanBranch:
+        with collaboration_transaction(self.db_path) as conn:
+            current = self.get_current_main_with_conn(conn, plan_id=plan_id)
+            if not current.previousMainBranchId:
+                raise PlanBranchRollbackUnavailable(planId=plan_id)
+            previous = self.get_plan_branch_with_conn(conn, plan_id=plan_id, branch_id=current.previousMainBranchId)
+            now = utc_now()
+            rollback_version = current.baseVersion + 1
+            previous_snapshot = dict(previous.snapshot)
+            selected = dict(previous_snapshot.get("selectedPlan") or {})
+            selected["version"] = rollback_version
+            previous_snapshot["selectedPlan"] = selected
+            conn.execute(
+                "UPDATE plan_branches SET status = 'archived', updated_at = ? WHERE branch_id = ?",
+                (now, current.branchId),
+            )
+            conn.execute(
+                """
+                UPDATE plan_branches
+                SET branch_type = 'main', status = 'adopted', base_version = ?,
+                    previous_main_branch_id = ?, snapshot_json = ?, updated_at = ?
+                WHERE branch_id = ?
+                """,
+                (rollback_version, current.branchId, _json(previous_snapshot), now, previous.branchId),
+            )
+            self.append_plan_branch_event(
+                conn,
+                plan_id=plan_id,
+                branch_id=previous.branchId,
+                event_type="main_branch_rolled_back",
+                actor_type=actor or "owner",
+                payload={"fromBranchId": current.branchId, "version": rollback_version},
+            )
+            return self.get_plan_branch_with_conn(conn, plan_id=plan_id, branch_id=previous.branchId)
+
+    def get_current_main_with_conn(self, conn: sqlite3.Connection, *, plan_id: str) -> PlanBranch:
+        row = conn.execute(
+            """
+            SELECT * FROM plan_branches
+            WHERE plan_id = ? AND branch_type = 'main' AND status = 'adopted'
+            ORDER BY updated_at DESC LIMIT 1
+            """,
+            (plan_id,),
+        ).fetchone()
+        if not row:
+            raise PlanBranchNotFound(planId=plan_id)
+        return _branch_from_row(row)
+
     def upsert_reviewer_with_conn(self, conn: sqlite3.Connection, *, share_id: str, display_name: str, role: str, viewed: bool) -> ShareReviewer:
         self.get_state_with_conn(conn, share_id)
         normalized_name = (display_name or "家人朋友").strip()[:80] or "家人朋友"
@@ -506,6 +880,28 @@ class CollaborationRepository:
         )
         return event
 
+    def append_plan_branch_event(self, conn: sqlite3.Connection, *, plan_id: str, branch_id: str | None, event_type: str, actor_type: str, payload: dict[str, Any]) -> PlanBranchEvent:
+        event = PlanBranchEvent(
+            eventId=new_id("branch_event"),
+            planId=plan_id,
+            branchId=branch_id,
+            eventType=event_type,
+            eventVersion=COLLABORATION_EVENT_VERSION,
+            actorType=actor_type,
+            payload=payload,
+            createdAt=utc_now(),
+        )
+        conn.execute(
+            """
+            INSERT INTO plan_branch_events
+              (event_id, plan_id, branch_id, event_type, event_version,
+               actor_type, payload_json, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (event.eventId, event.planId, event.branchId, event.eventType, event.eventVersion, event.actorType, _json(payload), event.createdAt),
+        )
+        return event
+
     def list_events(self, share_id: str) -> list[CollaborationEvent]:
         conn = connect(self.db_path)
         try:
@@ -515,6 +911,20 @@ class CollaborationRepository:
                 for row in conn.execute(
                     "SELECT * FROM collaboration_events WHERE share_id = ? ORDER BY created_at ASC",
                     (share_id,),
+                ).fetchall()
+            ]
+        finally:
+            conn.close()
+
+    def list_plan_branch_events(self, plan_id: str) -> list[PlanBranchEvent]:
+        conn = connect(self.db_path)
+        try:
+            _migrate(conn)
+            return [
+                _branch_event_from_row(row)
+                for row in conn.execute(
+                    "SELECT * FROM plan_branch_events WHERE plan_id = ? ORDER BY created_at ASC",
+                    (plan_id,),
                 ).fetchall()
             ]
         finally:

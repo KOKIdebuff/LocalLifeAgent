@@ -224,6 +224,36 @@ class ShareOwnerReviewRequest(BaseModel):
     decision: str = Field(pattern="^(continue_current_version)$")
 
 
+class PlanBranchCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sourceShareId: str = Field(min_length=1, max_length=160)
+    baseVersion: int = Field(ge=1)
+    feedbackIds: list[str] = Field(default_factory=list, max_length=100)
+    idempotencyKey: str = Field(min_length=1, max_length=160)
+    actor: str | None = Field(default="owner", max_length=120)
+
+
+class PlanBranchAdoptRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expectedVersion: int = Field(ge=1)
+    actor: str | None = Field(default="owner", max_length=120)
+
+
+class PlanBranchRejectRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    actor: str | None = Field(default="owner", max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class PlanBranchRollbackRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    actor: str | None = Field(default="owner", max_length=120)
+
+
 RUNTIME_TRANSITIONS = {
     "intent_loading": ["clarifying", "planning_local", "failed_recoverable"],
     "clarifying": ["planning_local"],
@@ -834,6 +864,71 @@ def review_share_feedback(share_id: str, request: ShareOwnerReviewRequest):
     try:
         state = collaboration_adapter().owner_review(share_id=share_id, decision=request.decision)
         return {"ok": True, **state.public_dict()}
+    except (CollaborationError, sqlite3.Error) as exc:
+        return collaboration_error_response(exc)
+
+
+@app.get("/api/plans/{plan_id}/branches")
+def list_plan_branches(plan_id: str):
+    try:
+        return collaboration_adapter().list_plan_branches(plan_id=plan_id)
+    except (CollaborationError, sqlite3.Error) as exc:
+        return collaboration_error_response(exc)
+
+
+@app.post("/api/plans/{plan_id}/branches")
+def create_plan_branch(plan_id: str, request: PlanBranchCreateRequest):
+    try:
+        return collaboration_adapter().create_derived_branch(
+            plan_id=plan_id,
+            source_share_id=request.sourceShareId,
+            base_version=request.baseVersion,
+            feedback_ids=request.feedbackIds,
+            idempotency_key=request.idempotencyKey,
+            actor=request.actor,
+        )
+    except (CollaborationError, sqlite3.Error) as exc:
+        return collaboration_error_response(exc)
+
+
+@app.get("/api/plans/{plan_id}/branches/{branch_id}")
+def get_plan_branch(plan_id: str, branch_id: str):
+    try:
+        return collaboration_adapter().get_plan_branch(plan_id=plan_id, branch_id=branch_id)
+    except (CollaborationError, sqlite3.Error) as exc:
+        return collaboration_error_response(exc)
+
+
+@app.post("/api/plans/{plan_id}/branches/{branch_id}/adopt")
+def adopt_plan_branch(plan_id: str, branch_id: str, request: PlanBranchAdoptRequest):
+    try:
+        return collaboration_adapter().adopt_plan_branch(
+            plan_id=plan_id,
+            branch_id=branch_id,
+            expected_version=request.expectedVersion,
+            actor=request.actor,
+        )
+    except (CollaborationError, sqlite3.Error) as exc:
+        return collaboration_error_response(exc)
+
+
+@app.post("/api/plans/{plan_id}/branches/{branch_id}/reject")
+def reject_plan_branch(plan_id: str, branch_id: str, request: PlanBranchRejectRequest):
+    try:
+        return collaboration_adapter().reject_plan_branch(
+            plan_id=plan_id,
+            branch_id=branch_id,
+            actor=request.actor,
+            reason=request.reason,
+        )
+    except (CollaborationError, sqlite3.Error) as exc:
+        return collaboration_error_response(exc)
+
+
+@app.post("/api/plans/{plan_id}/branches/rollback-previous-main")
+def rollback_previous_main_branch(plan_id: str, request: PlanBranchRollbackRequest):
+    try:
+        return collaboration_adapter().rollback_previous_main(plan_id=plan_id, actor=request.actor)
     except (CollaborationError, sqlite3.Error) as exc:
         return collaboration_error_response(exc)
 
