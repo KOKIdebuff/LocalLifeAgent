@@ -34,6 +34,18 @@ assert.ok(
   "candidate switcher runtime must load before app.js"
 );
 assert.ok(app.includes("decorateCandidateSwitchers"), "app must decorate cards with session-local candidate state");
+assert.ok(html.includes('aria-label="切换下一个场景"'), "reset button must act as the next-scenario control");
+assert.ok(app.includes("switchToNextSample"), "next-scenario control must cycle through quick scenarios");
+assert.ok(app.includes("resetDemo();\n    state.activeSampleId = nextSampleId"), "scenario switching must reset output without auto-generating plans");
+assert.ok(html.includes("autorenew"), "next-scenario control must use a rotating icon");
+assert.ok(app.includes("spinResetIcon"), "next-scenario control icon must rotate on click");
+assert.ok(styles.includes(".command-reset .material-symbols-rounded.is-spinning"), "next-scenario control icon must rotate only after click");
+assert.ok(!html.includes("演示流程"), "hero flow hint must be removed");
+assert.ok(!html.includes("仅用于本次规划"), "command footer privacy note must be removed");
+assert.ok(!app.includes('["识别来源", formatIntentSource(parsed)]'), "requirements grid must not show parser source");
+assert.ok(!app.includes("回答追问后会继续生成候选方案"), "clarification state must not show extra plan empty copy");
+assert.ok(!app.includes("回答追问后才能生成美团服务包"), "clarification state must not show extra service empty copy");
+assert.ok(app.includes('"得分 " + detail.score'), "score breakdown values must be labeled as scores");
 assert.ok(styles.includes(".candidate-switcher"), "candidate switcher interaction styles must exist");
 assert.ok(html.includes('data-route-link="/saved-plans"'), "saved plans route must be reachable from the shared header");
 assert.ok(html.includes('data-route-link="/collaboration"'), "collaboration route must be reachable from the shared header");

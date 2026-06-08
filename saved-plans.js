@@ -140,6 +140,25 @@
     return workspaces[snapshotId] ? clone(workspaces[snapshotId]) : null;
   }
 
+  function deleteSnapshot(storage, snapshotId) {
+    const id = String(snapshotId || "");
+    if (!id) return false;
+
+    const snapshots = listSnapshots(storage);
+    const nextSnapshots = snapshots.filter(function (item) {
+      return item.snapshotId !== id;
+    });
+    if (nextSnapshots.length === snapshots.length) return false;
+
+    const workspaces = safeRead(storage, SNAPSHOT_WORKSPACES_KEY, {});
+    if (Object.prototype.hasOwnProperty.call(workspaces, id)) {
+      delete workspaces[id];
+      safeWrite(storage, SNAPSHOT_WORKSPACES_KEY, workspaces);
+    }
+
+    return safeWrite(storage, STORAGE_KEY, nextSnapshots);
+  }
+
   function hasPlanMeta(value, planId) {
     return Boolean(value && value.meta && value.meta.legacyPlanId === planId);
   }
@@ -540,6 +559,7 @@
     storeSnapshot: storeSnapshot,
     storeSnapshotWorkspace: storeSnapshotWorkspace,
     loadSnapshotWorkspace: loadSnapshotWorkspace,
+    deleteSnapshot: deleteSnapshot,
     collectSelectedPayload: collectSelectedPayload,
     buildSnapshot: buildSnapshot,
     buildSnapshotFromWorkspace: buildSnapshotFromWorkspace,

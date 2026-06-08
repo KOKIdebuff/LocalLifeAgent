@@ -31,6 +31,7 @@
     soldout: { replanEvent: "activity_sold_out" },
     partyChanged: { replanEvent: "party_changed" },
   };
+  const sampleOrder = Object.keys(samples);
 
   const EXECUTION_INDEX_KEY = "localLife.executionIndex.v1";
   const COLLABORATION_INDEX_KEY = "localLife.collaborationIndex.v1";
@@ -69,6 +70,7 @@
     pendingMockRefresh: null,
     activeExecution: null,
     activeShare: null,
+    activeSampleId: "weekend",
   };
 
   const els = {
@@ -130,7 +132,16 @@
   });
 
   els.reset.addEventListener("click", function () {
-    resetDemo();
+    spinResetIcon();
+    switchToNextSample();
+  });
+
+  els.input.addEventListener("input", function () {
+    const matchedSampleId = sampleOrder.find(function (sampleId) {
+      return els.input.value === samples[sampleId];
+    });
+    state.activeSampleId = matchedSampleId || "";
+    updateSampleButtonState(matchedSampleId || "");
   });
 
   els.execute.addEventListener("click", function () {
@@ -239,11 +250,52 @@
 
   els.sampleButtons.forEach(function (button) {
     button.addEventListener("click", function () {
-      els.input.value = samples[button.dataset.sample];
-      state.overrides = Object.assign({}, sampleOverrides[button.dataset.sample] || {});
-      runPlanning({ resetOverrides: false });
+      applySample(button.dataset.sample);
     });
   });
+
+  function getCurrentSampleId() {
+    if (state.activeSampleId && samples[state.activeSampleId]) return state.activeSampleId;
+    return sampleOrder.find(function (sampleId) {
+      return els.input.value === samples[sampleId];
+    }) || sampleOrder[0];
+  }
+
+  function updateSampleButtonState(sampleId) {
+    els.sampleButtons.forEach(function (button) {
+      const active = button.dataset.sample === sampleId;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-pressed", active ? "true" : "false");
+    });
+  }
+
+  function spinResetIcon() {
+    if (!els.reset) return;
+    const icon = els.reset.querySelector(".material-symbols-rounded");
+    if (!icon) return;
+    icon.classList.remove("is-spinning");
+    void icon.offsetWidth;
+    icon.classList.add("is-spinning");
+    icon.addEventListener("animationend", function () {
+      icon.classList.remove("is-spinning");
+    }, { once: true });
+  }
+
+  function applySample(sampleId) {
+    const nextSampleId = samples[sampleId] ? sampleId : sampleOrder[0];
+    resetDemo();
+    state.activeSampleId = nextSampleId;
+    els.input.value = samples[nextSampleId];
+    state.overrides = Object.assign({}, sampleOverrides[nextSampleId] || {});
+    updateSampleButtonState(nextSampleId);
+  }
+
+  function switchToNextSample() {
+    const currentSampleId = getCurrentSampleId();
+    const currentIndex = sampleOrder.indexOf(currentSampleId);
+    const nextIndex = currentIndex >= 0 ? currentIndex + 1 : 0;
+    applySample(sampleOrder[nextIndex % sampleOrder.length]);
+  }
 
   function setAgentTab(tabName, openDrawer) {
     els.agentTabs.forEach(function (button) {
@@ -751,7 +803,20 @@
       open.addEventListener("click", function () {
         navigateTo("/saved-plans/" + encodeURIComponent(snapshot.snapshotId));
       });
-      card.append(heading, open);
+      const actions = document.createElement("div");
+      actions.className = "saved-plan-card-actions";
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "ghost-btn danger-btn";
+      setButtonContent(remove, "delete", "删除");
+      remove.addEventListener("click", function () {
+        deleteSavedSnapshot(snapshot.snapshotId, {
+          name: snapshot.selectedPlan && snapshot.selectedPlan.name,
+          redirect: false,
+        });
+      });
+      actions.append(open, remove);
+      card.append(heading, actions);
       grid.appendChild(card);
     });
     els.routeContent.appendChild(grid);
@@ -1699,6 +1764,19 @@
       createShareFromWorkspace(workspace, plan, selected);
     });
     els.routeActions.append(listButton, shareButton, executeButton, saveButton);
+    if (isSaved) {
+      const deleteButton = document.createElement("button");
+      deleteButton.type = "button";
+      deleteButton.className = "ghost-btn danger-btn";
+      setButtonContent(deleteButton, "delete", "删除版本");
+      deleteButton.addEventListener("click", function () {
+        deleteSavedSnapshot(state.route.snapshotId, {
+          name: plan ? plan.name : selected.name,
+          redirect: true,
+        });
+      });
+      els.routeActions.append(deleteButton);
+    }
 
     if (workspace.dirty) {
       setRouteNotice("版本 " + workspace.context.version + " 有未保存调整。已保留调整前的稳定版本，可撤销本次调整。", "warning");
@@ -1972,6 +2050,29 @@
     state.detailWorkspace = storedWorkspace;
     savedPlans.saveWorkspace(window.localStorage, storedWorkspace);
     navigateTo("/saved-plans/" + encodeURIComponent(snapshot.snapshotId));
+  }
+
+  function deleteSavedSnapshot(snapshotId, options) {
+    const opts = options || {};
+    const name = opts.name ? "“" + opts.name + "”" : "这个已保存版本";
+    if (!window.confirm("确定删除" + name + "吗？删除后不能从已保存版本列表恢复。")) {
+      return false;
+    }
+    const deleted = savedPlans.deleteSnapshot(window.localStorage, snapshotId);
+    if (!deleted) {
+      setRouteNotice("没有找到要删除的已保存版本，可能已经被移除。", "warning");
+      return false;
+    }
+    if (state.detailWorkspace && state.detailWorkspace.sourceSnapshotId === snapshotId) {
+      state.detailWorkspace = null;
+    }
+    setRouteNotice("已删除已保存版本。", "success");
+    if (opts.redirect) {
+      navigateTo("/saved-plans");
+    } else {
+      renderSavedPlansPage();
+    }
+    return true;
   }
 
   function createSnapshotFallbackCard(selected) {
@@ -2660,6 +2761,8 @@
 
   function resetDemo() {
     els.input.value = samples.weekend;
+    state.activeSampleId = "weekend";
+    updateSampleButtonState(state.activeSampleId);
     state.input = "";
     state.overrides = {};
     state.intentMeta = null;
@@ -2679,8 +2782,6 @@
     els.understanding.textContent = "输入需求后会展示识别出的时间、同行人、人数和偏好。";
     els.parseStatus.textContent = "等待输入";
     renderStages();
-    els.replanEvents.className = "replan-list empty-state";
-    els.replanEvents.textContent = "生成方案后可模拟下雨、满座、孩子累了或预算太高。";
     els.servicePackage.className = "service-package empty-state";
     els.servicePackage.textContent = "选择方案后会展示闲时指标、团购套餐和加购动作。";
     els.plans.className = "plan-list empty-state";
@@ -2783,7 +2884,6 @@
     els.understanding.innerHTML = "";
 
     const rows = [
-      ["识别来源", formatIntentSource(parsed)],
       ["场景", parsed.groupLabel],
       ["人群", parsed.groupSummary],
       ["人数", parsed.partySize ? parsed.partySize + " 人" : "待确认"],
@@ -2810,14 +2910,6 @@
         return lesson.lesson;
       }), "green"));
     }
-  }
-
-  function formatIntentSource(parsed) {
-    if (parsed.intentSource === "llm") {
-      return "LLM 识别" + (typeof parsed.intentConfidence === "number" ? "（置信度 " + Math.round(parsed.intentConfidence * 100) + "%）" : "");
-    }
-    if (state.intentMeta && state.intentMeta.source === "low_confidence") return "低置信度，已回退本地规则";
-    return "本地规则兜底";
   }
 
   function renderFeedback() {
@@ -2935,7 +3027,7 @@
     if (!plans.length) {
       els.plans.className = "plan-list empty-state";
       els.plans.textContent = state.result && state.result.needsClarification
-        ? "回答追问后会继续生成候选方案。"
+        ? ""
         : "这里会展示 2-3 个可执行方案。";
       return;
     }
@@ -3175,7 +3267,7 @@
       const label = document.createElement("span");
       label.textContent = detail.label;
       const value = document.createElement("strong");
-      value.textContent = detail.max > 0 ? detail.score + "/" + detail.max : String(detail.score);
+      value.textContent = detail.max > 0 ? "得分 " + detail.score + "/" + detail.max : "得分 " + detail.score;
       head.append(label, value);
       const summary = document.createElement("p");
       summary.textContent = detail.summary;
@@ -3214,7 +3306,7 @@
     if (!pkg) {
       els.servicePackage.className = "service-package empty-state";
       els.servicePackage.textContent = state.result && state.result.needsClarification
-        ? "回答追问后才能生成美团服务包。"
+        ? ""
         : "选择方案后会展示闲时指标、团购套餐和加购动作。";
       return;
     }
@@ -3300,30 +3392,9 @@
   }
 
   function renderReplanEvents() {
-    const plan = getSelectedPlan();
-    const events = plan && plan.servicePackage ? plan.servicePackage.replanEvents : [];
-    if (!events.length) {
-      els.replanEvents.className = "replan-list empty-state";
-      els.replanEvents.textContent = state.result && state.result.needsClarification
-        ? "补充关键信息后才能模拟重排。"
-        : "生成方案后可模拟下雨、满座、孩子累了或预算太高。";
-      return;
-    }
-
-    els.replanEvents.className = "replan-list";
+    if (!els.replanEvents) return;
+    els.replanEvents.hidden = true;
     els.replanEvents.innerHTML = "";
-    events.forEach(function (event) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "replan-btn" + (event.active ? " active" : "");
-      button.innerHTML = '<strong></strong><span></span>';
-      button.querySelector("strong").textContent = event.label;
-      button.querySelector("span").textContent = event.active ? "已应用：" + event.description : event.description;
-      button.addEventListener("click", function () {
-        applyReplanEvent(event.id);
-      });
-      els.replanEvents.appendChild(button);
-    });
   }
 
   function renderQueue() {
@@ -3331,7 +3402,7 @@
     if (!plan) {
       els.queue.className = "queue-list empty-state";
       els.queue.textContent = state.result && state.result.needsClarification
-        ? "回答追问后才能生成执行队列。"
+        ? ""
         : "选择方案后会生成预约、下单、消息和提醒动作。";
       els.queueStatus.textContent = "待选择方案";
       els.execute.disabled = true;
@@ -3414,7 +3485,7 @@
 
   function getActionStatusLabel(action) {
     if (action.status === "success") return "成功";
-    if (action.status === "skipped") return "已跳过";
+    if (action.status === "skipped") return "待确认";
     if (isManualAction(action)) return "需人工确认";
     return action.requiresConfirmation ? "待确认" : "低影响";
   }

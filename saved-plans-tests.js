@@ -84,6 +84,14 @@ const storage = createMemoryStorage();
 lifecycle.storeSnapshot(storage, snapshot);
 assert.strictEqual(lifecycle.getSnapshot(storage, snapshot.snapshotId).selectedPlan.name, snapshot.selectedPlan.name);
 
+const deleteStorage = createMemoryStorage();
+lifecycle.storeSnapshot(deleteStorage, snapshot);
+lifecycle.storeSnapshotWorkspace(deleteStorage, snapshot.snapshotId, { sourceSnapshotId: snapshot.snapshotId });
+assert.strictEqual(lifecycle.deleteSnapshot(deleteStorage, "missing-snapshot"), false);
+assert.strictEqual(lifecycle.deleteSnapshot(deleteStorage, snapshot.snapshotId), true);
+assert.strictEqual(lifecycle.getSnapshot(deleteStorage, snapshot.snapshotId), null);
+assert.strictEqual(lifecycle.loadSnapshotWorkspace(deleteStorage, snapshot.snapshotId), null);
+
 assert.deepStrictEqual(lifecycle.parseRoute("/plans/plan-123"), { name: "plan-detail", planId: "plan-123" });
 assert.deepStrictEqual(lifecycle.parseRoute("/saved-plans"), { name: "saved-plans" });
 assert.deepStrictEqual(

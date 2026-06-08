@@ -1553,6 +1553,24 @@ textarea:focus-visible {
   color: var(--text);
 }
 
+.command-reset .material-symbols-rounded {
+  transform-origin: 50% 50%;
+}
+
+.command-reset .material-symbols-rounded.is-spinning {
+  animation: command-reset-spin 700ms linear 1;
+}
+
+@keyframes command-reset-spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .workbench-main {
   width: min(1040px, calc(100% - 360px));
   min-height: 100vh;
@@ -1592,22 +1610,6 @@ textarea:focus-visible {
   font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-}
-
-.flow-hint {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding-bottom: 6px;
-  color: var(--muted);
-  font-size: 11px;
-  white-space: nowrap;
-}
-
-.flow-hint i {
-  width: 20px;
-  height: 1px;
-  background: var(--outline);
 }
 
 .command-box,
@@ -1696,6 +1698,18 @@ textarea:focus-visible {
   color: var(--text);
 }
 
+.danger-btn {
+  border-color: #efc2c2;
+  background: #fff6f6;
+  color: #b42318;
+}
+
+.danger-btn:hover:not(:disabled) {
+  border-color: #d92d20;
+  background: #fff0f0;
+  color: #912018;
+}
+
 .full-width {
   width: 100%;
 }
@@ -1737,17 +1751,11 @@ textarea:focus-visible {
   color: var(--primary);
 }
 
-.privacy-note {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--muted);
-  font-size: 11px;
-  white-space: nowrap;
-}
-
-.privacy-note .material-symbols-rounded {
-  font-size: 15px;
+.sample-btn.active {
+  border-color: #9ec5fe;
+  background: #e7f1ff;
+  color: var(--primary);
+  font-weight: 700;
 }
 
 .requirements-section,
@@ -2757,10 +2765,6 @@ textarea:focus-visible {
     font-size: 32px;
   }
 
-  .flow-hint {
-    display: none;
-  }
-
   .command-input-row {
     grid-template-columns: auto minmax(0, 1fr);
   }
@@ -2773,10 +2777,6 @@ textarea:focus-visible {
   .command-footer {
     align-items: flex-start;
     flex-direction: column;
-  }
-
-  .privacy-note {
-    display: none;
   }
 
   .requirements-card,
@@ -3124,6 +3124,15 @@ textarea:focus-visible {
   justify-content: space-between;
   gap: 22px;
   padding: 22px;
+}
+
+.saved-plan-card-actions {
+  display: flex;
+  width: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
 
 .execution-record-card,
