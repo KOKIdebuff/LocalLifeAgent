@@ -87,6 +87,25 @@ class RuntimeAdapter:
     def list_events(self, *, session_id: str, after_sequence: int = 0, limit: int = 100):
         return self.core.list_events(session_id=session_id, after_sequence=after_sequence, limit=limit)
 
+    def append_execution_summary(
+        self,
+        *,
+        session_id: str,
+        event_type: str,
+        idempotency_key: str,
+        actor: str | None = None,
+        trace_id: str | None = None,
+        payload: dict[str, Any],
+    ):
+        return self.core.append_execution_summary(
+            session_id=session_id,
+            event_type=event_type,
+            idempotency_key=idempotency_key,
+            actor=_actor(actor),
+            trace_id=_trace(trace_id),
+            payload=payload,
+        )
+
     def create_recovery_point(
         self,
         *,

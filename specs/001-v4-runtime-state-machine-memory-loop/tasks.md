@@ -193,13 +193,29 @@ expanding V5 P0 or adding Execution task/step ownership.
 Execution may start as a separate module in the same FastAPI application; P1
 does not require a separate process or distributed transaction.
 
-- [ ] T069 [P1-A] Define independent Execution model, state machine, repositories, and create/query/advance/cancel API
-- [ ] T070 [P1-B] Add Step Attempt history, failure classification, bounded retry, timeout, idempotency, and plan-version gate
-- [ ] T071 [P1-C] Integrate Execution with Runtime through stable adapters and authoritative summary Events
-- [ ] T072 Add Execution transition, stale-plan rejection, duplicate-advance, retry-limit, cancellation, Mock-boundary, and Runtime-summary consistency tests
+- [x] T069 [P1-A] Define independent Execution model, state machine, repositories, and create/query/advance/cancel API
+- [x] T070 [P1-B] Add Step Attempt history, failure classification, bounded retry, timeout, idempotency, and plan-version gate
+- [x] T071 [P1-C] Integrate Execution with Runtime through stable adapters and authoritative summary Events
+- [x] T072 Add Execution transition, stale-plan rejection, duplicate-advance, retry-limit, cancellation, Mock-boundary, and Runtime-summary consistency tests
 
 Deferred beyond P1: background workers, outbox, distributed scheduling,
 multi-instance execution, and external action compensation.
+
+---
+
+## Phase 13: Execution Outbox and In-process Worker P1-D
+
+**Purpose**: Add a durable local outbox and manual in-process worker drain for
+Execution without introducing distributed scheduling or real external actions.
+
+- [x] T073 [P1-D] Add `execution_outbox` persistence, idempotent current-step enqueue, and outbox status tracking
+- [x] T074 [P1-D] Add manual `ExecutionWorker.drain_outbox()` that advances only the matching current active mock step
+- [x] T075 [P1-D] Expose `/api/executions/outbox/drain` through ExecutionAdapter without binding Runtime to worker internals
+- [x] T076 [P1-D] Add migration, route, worker-drain, stale-outbox, and mock-boundary tests
+
+Deferred beyond P1-D: automatic background thread startup, distributed queue
+claiming, multi-instance scheduling, real external action execution, and
+external side-effect compensation.
 
 ---
 

@@ -132,7 +132,12 @@
     "session_closed",
     "recovery_point_created",
     "rollback_completed",
-    "rollback_failed"
+    "rollback_failed",
+    "execution_requested_summary",
+    "execution_completed_summary",
+    "execution_blocked_summary",
+    "execution_cancelled_summary",
+    "execution_failed_summary"
   ],
   "runtimeTransitionEventTypes": [
     "intent_loaded",
@@ -421,7 +426,8 @@
       "execution_requested_summary",
       "execution_completed_summary",
       "execution_blocked_summary",
-      "execution_cancelled_summary"
+      "execution_cancelled_summary",
+      "execution_failed_summary"
     ],
     "executionOwns": [
       "execution_lifecycle",

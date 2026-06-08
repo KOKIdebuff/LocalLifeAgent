@@ -9,3 +9,4 @@ DEMO_SCRIPT.md
 memory/*.sqlite
 memory/*.sqlite-*
 memory/*.jsonl
+modelscope-deploy.zip

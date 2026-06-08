@@ -123,6 +123,10 @@ def _migrate(conn: sqlite3.Connection) -> None:
     )
 
 
+def ensure_runtime_schema(conn: sqlite3.Connection) -> None:
+    _migrate(conn)
+
+
 @contextmanager
 def runtime_transaction(db_path: Path | str) -> Iterator[sqlite3.Connection]:
     conn = connect(db_path)
@@ -314,6 +318,7 @@ class RuntimeRepository:
         reason: str | None = None,
         new_runtime_state: str | None = None,
         new_lifecycle_status: str | None = None,
+        active_execution_id: str | None = None,
     ) -> RuntimeEvent:
         next_sequence = (
             conn.execute(
@@ -377,6 +382,7 @@ class RuntimeRepository:
             UPDATE runtime_sessions
             SET runtime_state = ?, lifecycle_status = ?, version = version + 1,
                 last_event_id = ?, updated_at = ?,
+                active_execution_id = COALESCE(?, active_execution_id),
                 paused_at = CASE WHEN ? = 'paused' THEN ? ELSE paused_at END,
                 closed_at = CASE WHEN ? = 'closed' THEN ? ELSE closed_at END
             WHERE session_id = ?
@@ -386,6 +392,7 @@ class RuntimeRepository:
                 new_lifecycle_status or session.lifecycleStatus,
                 event.eventId,
                 now,
+                active_execution_id,
                 new_lifecycle_status,
                 now,
                 new_lifecycle_status,
