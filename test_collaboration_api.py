@@ -217,3 +217,87 @@ def test_expired_share_is_readonly_for_feedback(monkeypatch):
         )
         assert feedback.status_code == 410
         assert feedback.json()["error"] == "share_readonly"
+
+
+def test_plan_branch_lifecycle_create_adopt_reject_and_rollback(monkeypatch):
+    with temp_dir() as tmp:
+        db_path = Path(tmp) / "agent_memory.sqlite"
+        client = client_with_settings(monkeypatch, db_path)
+        created = create_share(client).json()
+        share_id = created["share"]["shareId"]
+        token = created["token"]
+
+        client.post(
+            f"/api/shares/{share_id}/feedback?token={token}",
+            json={
+                "displayName": "老婆",
+                "role": "partner",
+                "targetType": "restaurant",
+                "targetId": "restaurant-1",
+                "reaction": "concern",
+                "comment": "想吃得更清淡一点",
+            },
+        )
+
+        branches = client.get("/api/plans/plan-a/branches")
+        assert branches.status_code == 200
+        assert branches.json()["mainBranch"] is None
+
+        derived = client.post(
+            "/api/plans/plan-a/branches",
+            json={
+                "sourceShareId": share_id,
+                "baseVersion": 2,
+                "feedbackIds": [],
+                "idempotencyKey": "branch-create-a",
+                "actor": "owner",
+            },
+        )
+        assert derived.status_code == 200
+        branch = derived.json()["branch"]
+        assert branch["branchType"] == "derived"
+        assert branch["status"] == "proposed"
+        assert branch["diffSummary"]
+
+        duplicate = client.post(
+            "/api/plans/plan-a/branches",
+            json={
+                "sourceShareId": share_id,
+                "baseVersion": 2,
+                "feedbackIds": [],
+                "idempotencyKey": "branch-create-a",
+                "actor": "owner",
+            },
+        )
+        assert duplicate.status_code == 200
+        assert duplicate.json()["duplicate"] is True
+
+        branch_id = branch["branchId"]
+        branches_after_create = client.get("/api/plans/plan-a/branches")
+        assert branches_after_create.json()["mainBranch"]["branchType"] == "main"
+        detail = client.get(f"/api/plans/plan-a/branches/{branch_id}")
+        assert detail.status_code == 200
+        assert detail.json()["branch"]["branchId"] == branch_id
+
+        adopt = client.post(
+            f"/api/plans/plan-a/branches/{branch_id}/adopt",
+            json={"expectedVersion": 2, "actor": "owner"},
+        )
+        assert adopt.status_code == 200
+        assert adopt.json()["branch"]["branchType"] == "main"
+        assert adopt.json()["mainBranch"]["branchId"] == branch_id
+
+        reject = client.post(
+            f"/api/plans/plan-a/branches/{branch_id}/reject",
+            json={"actor": "owner", "reason": "already adopted"},
+        )
+        assert reject.status_code == 409
+        assert reject.json()["error"] == "branch_not_adoptable"
+
+        rollback = client.post(
+            "/api/plans/plan-a/branches/rollback-previous-main",
+            json={"actor": "owner"},
+        )
+        assert rollback.status_code == 200
+        assert rollback.json()["mainBranch"]["branchType"] == "main"
+        assert rollback.json()["branch"]["previousMainBranchId"] == branch_id

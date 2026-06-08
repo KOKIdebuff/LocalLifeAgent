@@ -42,3 +42,28 @@ class CollaborationAdapter:
 
     def owner_review(self, *, share_id: str, decision: str):
         return self.core.owner_review(share_id=share_id, decision=decision)
+
+    def list_plan_branches(self, *, plan_id: str):
+        return self.core.list_plan_branches(plan_id=plan_id)
+
+    def get_plan_branch(self, *, plan_id: str, branch_id: str):
+        return self.core.get_plan_branch(plan_id=plan_id, branch_id=branch_id)
+
+    def create_derived_branch(self, *, plan_id: str, source_share_id: str, base_version: int, feedback_ids: list[str] | None, idempotency_key: str, actor: str | None = None):
+        return self.core.create_derived_branch(
+            plan_id=plan_id,
+            source_share_id=source_share_id,
+            base_version=base_version,
+            feedback_ids=feedback_ids,
+            idempotency_key=idempotency_key,
+            actor=actor,
+        )
+
+    def adopt_plan_branch(self, *, plan_id: str, branch_id: str, expected_version: int, actor: str | None = None):
+        return self.core.adopt_plan_branch(plan_id=plan_id, branch_id=branch_id, expected_version=expected_version, actor=actor)
+
+    def reject_plan_branch(self, *, plan_id: str, branch_id: str, actor: str | None = None, reason: str | None = None):
+        return self.core.reject_plan_branch(plan_id=plan_id, branch_id=branch_id, actor=actor, reason=reason)
+
+    def rollback_previous_main(self, *, plan_id: str, actor: str | None = None):
+        return self.core.rollback_previous_main(plan_id=plan_id, actor=actor)
